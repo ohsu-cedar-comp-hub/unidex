@@ -160,7 +160,7 @@ def generate_annotation_dict(annotation_files_list:list, mode_list:list) -> dict
             line = open_annotation_file.readline().strip().split()            
             if not line: # break if end of file
                 break
-            cellID, annot = line # exctract cellid and annotation from current line            
+            cellID, annot = line # exctract cell id and annotation from current line            
             annotation_dict[annotation_file][mode_list[i]][cellID] = annot # add instance dictionary
         
         logging.info("Total lines processed for annotation file '{}': {}".format(annotation_file, len(annotation_dict[annotation_file][mode_list[i]])))
