@@ -8,6 +8,7 @@ import sys
 import os
 import logging
 import json
+import re
 
 
 def parse_args():
@@ -175,34 +176,7 @@ def validate_mode_count(mode_list:list, mode_dict:dict, mode_config_file:str):
         sys.exit("Dictionary does not contain all specified modes:\n"
                     "mode_list: {}\n"
                     "mode_dict: {}\n"
-                    "Please validate modes are specified in config file: {}".format(mode_list, mode_dict, os.path.realpath(mode_config_file)))
-
-
-def add_mode_to_dict(mode_components:list, mode_dict:dict) -> dict:
-    """
-    Adds new mode to mode dict
-
-    Parameters:
-    -----------
-    mode_components : list
-        Characteristics of the mode to be added to the mode dictionary
-
-    mode_dict : dict
-        Dictionary containing all user specified modes for current run
-
-    Returns:
-    --------
-    mode_dict : dict
-        Returns the mode dictionary with the new mode addition
-    """
-    mode, read1, index1, index2, read2, index_files = mode_components[0], mode_components[1], mode_components[2], mode_components[3], mode_components[4], mode_components[5:]
-    mode_dict[mode] = {}
-    mode_dict[mode]['read1'] = read1
-    mode_dict[mode]['index1'] = index1
-    mode_dict[mode]['index2'] = index2
-    mode_dict[mode]['read2'] = read2
-    mode_dict[mode]['index_files'] = index_files
-    return mode_dict
+                    "ERROR: Please validate modes are specified in config file: {}".format(mode_list, mode_dict.keys(), os.path.realpath(mode_config_file)))
 
 
 # TODO: define the aspects of the dictionary in the docstrings
@@ -248,11 +222,47 @@ def generate_mode_dict(mode_list:list, mode_config_file:str) -> dict:
 
     validate_mode_count(mode_list, mode_dict, mode_config_file)
 
-    logging.info("Mode dicitionary successfully created:") # log dictionary
+    logging.info("Mode dicitionary successfully created") # log dictionary
     for mode in mode_dict:
-        logging.info("{}".format(mode))
+        logging.info("\t{}:".format(mode))
         for component in mode_dict[mode]:
-            logging.info("{}: {}".format(component, mode_dict[mode][component]))
+            logging.info("\t\t{}: {}".format(component, mode_dict[mode][component]))
+
+    return mode_dict
+
+
+# TODO: may need to come back and address additional mode variations - this works for the s3 mode but may fail for the 10x mode
+# TODO: can make much more flexible
+def add_mode_to_dict(mode_components:list, mode_dict:dict) -> dict:
+    """
+    Adds new mode to mode dict
+
+    Parameters:
+    -----------
+    mode_components : list
+        Characteristics of the mode to be added to the mode dictionary
+
+    mode_dict : dict
+        Dictionary containing all user specified modes for current run
+
+    Returns:
+    --------
+    mode_dict : dict
+        Returns the mode dictionary with the new mode addition
+    """
+  
+    # extract components of mode
+    mode, read1, index1, index2, read2, index_files = mode_components[0], mode_components[1], mode_components[2], mode_components[3], mode_components[4], mode_components[5:]
+
+    # instantiate mode and compoenents within mode dictionary
+    mode_dict[mode] = {}
+    mode_dict[mode]['read1'] = {part.split(":")[0]: int(part.split(":")[1]) for part in read1.split(",")}
+    mode_dict[mode]['index1'] = {part.split(":")[0]: int(part.split(":")[1]) for part in index1.split(",")}
+    mode_dict[mode]['index2'] = {part.split(":")[0]: int(part.split(":")[1]) for part in index2.split(",")}
+    mode_dict[mode]['read2'] = {part.split(":")[0]: int(part.split(":")[1]) for part in read2.split(",")}
+
+    # add index file paths to dictionary - ignoring special flags
+    mode_dict[mode]['index_file_paths'] = {part.split("=")[0]: part.split("=")[1] for part in index_files if not re.search('index[0-9]_', part.split("=")[0])}
 
     return mode_dict
 
@@ -413,6 +423,8 @@ def main():
 
     # define read and index input files
     read1_file, read2_file, index1_file, index2_file = define_input_files(args)
+
+
 
 
 # run prgram
