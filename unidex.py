@@ -12,14 +12,57 @@ import json
 
 def parse_args():
     parser = argparse.ArgumentParser(description = "Demultiplex fastq")
-    parser.add_argument("-M", "--mode_list", type = str, help = "Mode list - modes must be specified in the modes.cfg file\n"
-                            "Modes must be comma separated and will demultiplex in specified order listed.\n")
-    parser.add_argument("-A", "--annotation_files", type = str, help = "Annotation file(s), comma separated with mode specified\n"
-                            "If only one mode is specified, then it will default to that mode\n"
-                            "[mode1]=[annot_file1],[mode2]=[annot_file2],etc... OR\n"
+    parser.add_argument("-L", "--query_mode_file", action = 'store_true', help = "List modes present in the mode config file."
+                            "Can specify a different mode file with -m and it will list modes in that file."
+                            "Can also provide an argument to match to refine list, e.g. 's3'")
+    parser.add_argument("-M", "--mode_list", type = str, help = "Mode list - modes must be specified in the modes.cfg file."
+                            "Modes must be comma separated and will demultiplex in specified order listed.")
+    parser.add_argument("-A", "--annotation_files", type = str, help = "Annotation file(s), comma separated with mode specified"
+                            "If only one mode is specified, then it will default to that mode."
+                            "[mode1]=[annot_file1],[mode2]=[annot_file2],etc... OR"
                             "First column of annot file designated mode for that annot")
-    parser.add_argument("-m", "--mode_config_file", help = "Mode config file")
+    parser.add_argument("-m", "--mode_config_file", help = "Mode config file", required = True)
     return parser.parse_args()
+
+
+# TODO: can add additional funcitonality here to look for valid mode file
+def validate_mode_file_exists(mode_file:str) -> bool:
+    """
+    Exits if mode file doesn't exist. Returns True if path to mode file is valid.
+
+    Parameters:
+    -----------
+    mode_file : str
+        Path to mode config file
+    """
+
+    if not os.path.exists(mode_file):
+        sys.exit("Please define valid mode file using -m flag.")
+    return True
+
+        
+def print_available_modes(mode_file:str) -> None:
+    """
+    Prints available modes to console and exits program.
+
+    Parameters:
+    -----------
+    mode_file : file
+        Path to mode config file
+    """
+    validate_mode_file_exists(mode_file)
+    print("Mode file specified:\n\t{}".format(mode_file))
+    print("Modes available:")
+    with open(mode_file) as f:
+        while True:
+            line = f.readline()
+            if not line: # break at end of file
+                break
+            if line.startswith("#"): # skip headers
+                continue
+            print("\t{}\n".format(line.split('\t')[0].strip()), sep = "", end = "") # print mode
+    sys.exit(0) # exit without error
+    return None
 
 
 def parse_comma_separated_inputs(comma_separated_input_string:str) -> list:
@@ -130,6 +173,7 @@ def generate_mode_dict(mode_list:list, mode_config_file:str) -> dict:
 
     return mode_dict
 
+
 def generate_annotation_dict(annotation_files_list:list, mode_list:list) -> dict:
     """
     Process annotation file(s).
@@ -172,6 +216,10 @@ def generate_annotation_dict(annotation_files_list:list, mode_list:list) -> dict
 # define program
 def main():
     args = parse_args()
+
+    # first check if mode file is queried
+    if args.query_mode_file:
+        print_available_modes(args.mode_config_file)
 
     # modes processing
     mode_list:list = parse_comma_separated_inputs(
