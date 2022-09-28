@@ -15,6 +15,8 @@ def parse_args():
     parser.add_argument("-L", "--query_mode_file", action = 'store_true', help = "List modes present in the mode config file."
                             "Can specify a different mode file with -m and it will list modes in that file."
                             "Can also provide an argument to match to refine list, e.g. 's3'")
+    parser.add_argument("-I", "--request_mode_info", help = "Provide info on one or more comma separated modes as detailed in the specified"
+                            "modes file (-m or default).", default = None)
     parser.add_argument("-M", "--mode_list", type = str, help = "Mode list - modes must be specified in the modes.cfg file."
                             "Modes must be comma separated and will demultiplex in specified order listed.")
     parser.add_argument("-A", "--annotation_files", type = str, help = "Annotation file(s), comma separated with mode specified"
@@ -62,6 +64,45 @@ def print_available_modes(mode_file:str) -> None:
                 continue
             print("\t{}\n".format(line.split('\t')[0].strip()), sep = "", end = "") # print mode
     sys.exit(0) # exit without error
+    return None
+
+
+def print_details_of_specific_mode(mode_file:str, mode:str) -> None:
+    """
+    Prints details of user-specified mode and exits program.
+
+    Parameters:
+    -----------
+    mode_file : str
+        Path to mode config file.
+    mode : str
+        User-specified mode of interest.
+    """
+    validate_mode_file_exists(mode_file)
+    print("Mode file specified:\n\t{}".format(mode_file))
+    print("User-specified mode of interest:\n\t{}".format(mode))
+    print("Mode details:")
+    
+    # find specified mode in mode file and print details
+    with open(mode_file, "r") as f:
+        while True:
+            line = f.readline()
+            if not line: # break at end of file
+                break
+            if line.startswith(mode):
+                # TODO: should be able to add more flexibility here
+                mode_details = line.split("\t")
+                print("\tRead1 = {}".format(mode_details[1]))
+                print("\tIndex1 = {}".format(mode_details[2]))
+                print("\tIndex2 = {}".format(mode_details[3]))
+                print("\tRead2 = {}".format(mode_details[4]))
+                print("\tIndex Files:")
+                for index_file in mode_details[5:]:
+                    # TODO: add validation of file existence
+                    print("\t\t{}".format(index_file.strip()))
+                sys.exit(0)
+    # if the function makes it here the mode doesn't exist
+    sys.exit("Mode {} does not exist in mode config file {}".format(mode, mode_file))
     return None
 
 
@@ -220,6 +261,10 @@ def main():
     # first check if mode file is queried
     if args.query_mode_file:
         print_available_modes(args.mode_config_file)
+    
+    # see if mode info is requested
+    if args.request_mode_info is not None:
+        print_details_of_specific_mode(args.mode_config_file, args.request_mode_info)
 
     # modes processing
     mode_list:list = parse_comma_separated_inputs(
