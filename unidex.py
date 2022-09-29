@@ -32,7 +32,7 @@ def parse_args():
 
     # Default options
     parser.add_argument("-O", "--output_folder", help = "Output folder (def = run name, -R)")
-    parser.add_argument("-d", "--max_hamming_distance", help = "Max allowed hamming distance", default = 2)
+    parser.add_argument("-d", "--max_hamming_distance", help = "Max allowed hamming distance", type = int, default = 2)
 
     # Default locations
     parser.add_argument("-m", "--mode_config_file", help = "Mode config file", required = True)
@@ -445,9 +445,9 @@ def generate_output_file_name(output_folder:str, experiment_name:str, mode:str, 
     # generate file name
     if not fail:
         # TODO: check out how experiment name will be passed here - added basename piece in case it is a full path
-        file_name = os.path.join(experiment_output_folder, ".".join([experiment_name, mode, index_read_num, "fq.gz"]))
+        file_name = os.path.join(experiment_output_folder, ".".join([experiment_name, mode, index_read_num, "fq"]))
     else:
-        file_name = os.path.join(experiment_output_folder, ".".join([experiment_name, "fail", index_read_num, "fq.gz"]))
+        file_name = os.path.join(experiment_output_folder, ".".join([experiment_name, "fail", index_read_num, "fq"]))
     return file_name
 
 
@@ -477,12 +477,12 @@ def generate_output_file_dict(mode_dict:dict, experiment_name:str, output_folder
     for mode in mode_dict:
         output_file_dict[mode] = {
             # TODO: address single-end sequencing situations - need to be more dynamic here
-            'R1_pass': gzip.open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R1'), "wt"),
-            'R2_pass': gzip.open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R2'), "wt"),
-            'R1_fail': gzip.open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R1', True), "wt"),
-            'R2_fail': gzip.open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R2', True), "wt"),
-            'I1_fail': gzip.open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'I1', True), "wt"),
-            'I2_fail': gzip.open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'I2', True), "wt")
+            'R1_pass': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R1'), "w"),
+            'R2_pass': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R2'), "w"),
+            'R1_fail': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R1', True), "w"),
+            'R2_fail': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R2', True), "w"),
+            'I1_fail': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'I1', True), "w"),
+            'I2_fail': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'I2', True), "w")
         }
     return output_file_dict
 
@@ -553,13 +553,34 @@ def prepend_barcode_to_qname(read:list, index1:str, index2:str, index3:str) -> l
     return read
 
 
+def slice_read(read:list, slice:int) -> list:
+    """
+    Slices read to remove unwanted indexes or sequences.
+
+    Parameters:
+    -----------
+    read : list
+        List containing four components of read from fastq file.
+    slice : int
+        Number of nucleotides to remove from beginning of read.
+
+    Returns:
+    --------
+    read : list
+        List containing four components of read after slicing.
+    """
+    read[1] = read[1][slice:]
+    read[3] = read[3][slice:]
+    return read
+
+
 def parse_fastq_input(
     input_files:tuple,
     mode_dict:dict,
     expected_index_dict:dict,
     output_file_dict:dict,
     hamming_distance:int
-) -> None:
+) -> tuple:
     """
     Processes fastqs, separating reads by mode, pass, and fail.
 
@@ -576,7 +597,24 @@ def parse_fastq_input(
         Dictionary containing open output file objects.
     hamming_distance : int
         Maximum allowable hamming distance between expected and observed indexes.
+
+    Returns:
+    --------
+    total_reads : int
+        Total reads processed.
+    passed_reads : int
+        Total reads that passed and were output to passing files.
+    failed_reads : int
+        Total reads that failed and were output to failing files.
+    corrected_barcodes: int
+        Total barcodes that were succesfully corrected.
     """
+    # instantiate counters
+    total_reads:int = 0
+    passed_reads:int = 0
+    failed_reads:int = 0
+    corrected_barcodes:int = 0
+
     # open all input files
     open_input_files:list = [gzip.open(input_file, "rt") for input_file in input_files]
     
@@ -587,6 +625,7 @@ def parse_fastq_input(
         read1_read, read2_read, index1_read, index2_read = [consume_next_read(open_input_file) for open_input_file in open_input_files]
         if not read1_read[0]: # break at end of files
             break
+        total_reads += 1 # increment total reads
 
         mode_count:int = 0 # isntantiate mode count tracker - used to determine if all modes checked and should write reads to fail
         for mode in mode_dict:
@@ -604,11 +643,9 @@ def parse_fastq_input(
             index1_match:bool = index1_seq in expected_index_dict[mode]['index1'] # used to identify matching index
             index2_match:bool = index2_seq in expected_index_dict[mode]['index2'] # used to identify matching index
             index3_match:bool = index3_seq in expected_index_dict[mode]['index3'] # used to identify matching index
-            
-            # TODO: may not actually need this
-            # instantiate tracker for correction made
-            index1_corrected:bool = False
-            index2_corrected:bool = False
+
+            # for tracking number of corrected barcodes
+            index1_corrected = index2_corrected = index3_corrected = False
 
             # TODO: make more dynamic (ie index4)
             # TODO: modularize - should be able to consolidate into one function
@@ -625,6 +662,7 @@ def parse_fastq_input(
                     # break if found index within hamming distance of expected indexes
                     if unmatched_count <= hamming_distance and nucleotide_index == index1_len:
                         index1_match = True
+                        index1_corrected = True
                         index1_seq = index1
                         break
             # loop through index2 and check for hamming distance (if index1 is valid)
@@ -639,6 +677,7 @@ def parse_fastq_input(
                     # break if found index within hamming distance of expected indexes
                     if unmatched_count <= hamming_distance and nucleotide_index == index2_len:
                         index2_match = True
+                        index2_corrected = True
                         index2_seq = index2
                         break
             # loop through index3 and check for hamming distance (if index1 and index2 are valid)
@@ -653,17 +692,25 @@ def parse_fastq_input(
                     # break if found index within hamming distance of expected indexes
                     if unmatched_count <= hamming_distance and nucleotide_index == index3_len:
                         index3_match = True
+                        index3_corrected = True
                         index3_seq = index3
                         break
 
             # write to output if indexes match or are within hamming distance
             if index1_match and index2_match and index3_match:
+                # increment corrected barcodes if at least one index was corrected
+                if index1_corrected or index2_corrected or index3_corrected:
+                    corrected_barcodes += 1 # increment corrected barcodes since all the way through corrections
                 # prepend barcode to qname of each read
                 read1_read, read2_read = [prepend_barcode_to_qname(read, index1_seq, index2_seq, index3_seq) for read in (read1_read, read2_read)]
+                # slice reads if necessary
+                if sum([mode_dict[mode]['read2'][key] for key in mode_dict[mode]['read2']]) > 0:
+                    read2_read = slice_read(read2_read, sum([mode_dict[mode]['read2'][key] for key in mode_dict[mode]['read2']]))
                 # write reads to passing output files
                 output_file_dict[mode]['R1_pass'].write("".join(read1_read))
                 output_file_dict[mode]['R2_pass'].write("".join(read2_read))
                 
+                passed_reads += 1 # count the passed read
                 break # break out of mode_dict loop
 
             mode_count += 1 # increment mode count
@@ -674,11 +721,43 @@ def parse_fastq_input(
                 output_file_dict[mode]['R2_fail'].write("".join(read2_read))
                 output_file_dict[mode]['I1_fail'].write("".join(index1_read))
                 output_file_dict[mode]['I2_fail'].write("".join(index2_read))
+                failed_reads += 1 # count the failed read
         
+        # update statment
+        if total_reads % 1000000 == 0:
+            logging.info("{} reads processed".format(total_reads))
+
     # close input files
     for open_input_file in open_input_files:
         open_input_file.close()
 
+    return total_reads, passed_reads, failed_reads, corrected_barcodes
+
+
+def output_summary(
+    total_reads:int,
+    passed_reads:int,
+    failed_reads:int,
+    corrected_barcodes:int
+) -> None:
+    """
+    Outputs summary stats to console.
+
+    Parameters:
+    -----------
+    total_reads : int
+        Total reads processed.
+    passed_reads : int
+        Total reads that passed and were output to passing files.
+    failed_reads : int
+        Total reads that failed and were output to failing files.
+    corrected_barcodes: int
+        Total barcodes that were succesfully corrected.
+    """
+    logging.info("Total reads processed: {}".format(total_reads))
+    logging.info("Total passing reads: {}".format(passed_reads))
+    logging.info("Total failed reads: {}".format(failed_reads))
+    logging.info("Total corrected barcodes: {}".format(corrected_barcodes))
     return None
 
 
@@ -739,7 +818,7 @@ def main():
     )
     
     # parse fastq input
-    parse_fastq_input(
+    total_reads, passed_reads, failed_reads, corrected_barcodes = parse_fastq_input(
         input_files = input_files,
         mode_dict = mode_dict,
         expected_index_dict = expected_index_dict,
@@ -749,6 +828,9 @@ def main():
 
     # close all files
     close_all_files(output_file_dict)
+
+    # log results
+    output_summary(total_reads, passed_reads, failed_reads, corrected_barcodes)
 
 
 # run prgram
