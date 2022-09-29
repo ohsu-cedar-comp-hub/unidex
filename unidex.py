@@ -9,6 +9,7 @@ import os
 import logging
 import json
 import re
+import gzip
 
 
 def parse_args():
@@ -31,6 +32,7 @@ def parse_args():
 
     # Default options
     parser.add_argument("-O", "--output_folder", help = "Output folder (def = run name, -R)")
+    parser.add_argument("-d", "--max_hamming_distance", help = "Max allowed hamming distance", default = 2)
 
     # Default locations
     parser.add_argument("-m", "--mode_config_file", help = "Mode config file", required = True)
@@ -474,12 +476,13 @@ def generate_output_file_dict(mode_dict:dict, experiment_name:str, output_folder
     # loop through each mode and add to new dict
     for mode in mode_dict:
         output_file_dict[mode] = {
-            'R1_pass': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R1'), "w"),
-            'R2_pass': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R2'), "w"),
-            'R1_fail': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R1', True), "w"),
-            'R2_fial': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R2', True), "w"),
-            'I1_fail': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'I1', True), "w"),
-            'I2_fail': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'I2', True), "w")
+            # TODO: address single-end sequencing situations - need to be more dynamic here
+            'R1_pass': gzip.open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R1'), "wt"),
+            'R2_pass': gzip.open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R2'), "wt"),
+            'R1_fail': gzip.open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R1', True), "wt"),
+            'R2_fail': gzip.open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R2', True), "wt"),
+            'I1_fail': gzip.open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'I1', True), "wt"),
+            'I2_fail': gzip.open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'I2', True), "wt")
         }
     return output_file_dict
 
@@ -496,6 +499,186 @@ def close_all_files(output_file_dict:dict) -> None:
     for mode in output_file_dict:
         for instance in output_file_dict[mode]:
             output_file_dict[mode][instance].close()
+    return None
+
+
+def consume_next_read(open_input_file:str) -> list:
+    """
+    Brings next read into program.
+
+    Parameters:
+    -----------
+    open_input_file : type
+        Open file instance.
+
+    Returns:
+    --------
+    read_fastq_components : list
+        Four fastq lines for the next read.
+    """
+    read_fastq_components = [open_input_file.readline() for _ in range(4)]
+    return read_fastq_components
+
+
+def prepend_barcode_to_qname(read:list, index1:str, index2:str, index3:str) -> list:
+    """
+    Appends barcode to reads containing valid indexes.
+
+    Parameters:
+    -----------
+    read : list
+        List containing four components of read from fastq file.
+    index1 : str
+        The expected i7 index (already corrected if necessary).
+    index2 : str
+        The expected i5 index (already corrected if necessary).
+    index3 : str
+        The expected Tn5 index (already corrected if necessary).
+
+    Returns:
+    --------
+    read : list
+        Returns the same list as input, but with barcode appended between '@' and rest of sequence.
+        
+    Example:
+    --------
+    before: ['@SOMETHING:SOMETHING\n', 'AAA\n', '+\n', 'JJJ\n']
+    after: ['@BARCODE:SOMETHING:SOMETHING\n', 'AAA\n', '+\n', 'JJJ\n']
+    """
+    # TODO: see if we need to address rev comp i7 in barcode creation
+    # generate barcode
+    barcode:str = "".join([index1, index2, index3])
+    # prepend to qname
+    read[0] = "".join(["@", barcode, ":", read[0][1:]])
+    return read
+
+
+def parse_fastq_input(
+    input_files:tuple,
+    mode_dict:dict,
+    expected_index_dict:dict,
+    output_file_dict:dict,
+    hamming_distance:int
+) -> None:
+    """
+    Processes fastqs, separating reads by mode, pass, and fail.
+
+    Parameters:
+    -----------
+    input_files : tuple
+        Tuple of input read and index files
+    mode_dict : dict
+        Mode dictionary containing modes as keys and mode characateristics as values.
+    expected_index_dict : dict
+        Dictionary containing modes as keys with values as subdictionaries containing index name
+        as key and a list of expected indexes as values.
+    output_file_dict : dict
+        Dictionary containing open output file objects.
+    hamming_distance : int
+        Maximum allowable hamming distance between expected and observed indexes.
+    """
+    # open all input files
+    open_input_files:list = [gzip.open(input_file, "rt") for input_file in input_files]
+    
+    # process input files
+    while True:
+        # TODO: account for single-end instances
+        # consume next read
+        read1_read, read2_read, index1_read, index2_read = [consume_next_read(open_input_file) for open_input_file in open_input_files]
+        if not read1_read[0]: # break at end of files
+            break
+
+        mode_count:int = 0 # isntantiate mode count tracker - used to determine if all modes checked and should write reads to fail
+        for mode in mode_dict:
+            # TODO: make more dynamic (ie index4)
+            # extract each index len and seq
+            index1_len:int = mode_dict[mode]['index1']['index1']
+            index1_seq:str = index1_read[1].strip()[:index1_len]
+            index2_len:int = mode_dict[mode]['index2']['index2']
+            index2_seq:str = index2_read[1].strip()[:index2_len]
+            index3_len:int = mode_dict[mode]['read2']['index3'] # TODO: may need to make storage of index3 more dynamice
+            index3_seq:str = read2_read[1][:index3_len]
+
+            # TODO: make more dynamic (ie index4)
+            # check for matching indexes
+            index1_match:bool = index1_seq in expected_index_dict[mode]['index1'] # used to identify matching index
+            index2_match:bool = index2_seq in expected_index_dict[mode]['index2'] # used to identify matching index
+            index3_match:bool = index3_seq in expected_index_dict[mode]['index3'] # used to identify matching index
+            
+            # TODO: may not actually need this
+            # instantiate tracker for correction made
+            index1_corrected:bool = False
+            index2_corrected:bool = False
+
+            # TODO: make more dynamic (ie index4)
+            # TODO: modularize - should be able to consolidate into one function
+            # loop through index1 and check for hamming distance
+            if not index1_match:
+                for index1 in expected_index_dict[mode]['index1']:
+                    unmatched_count:int = 0 # instantiate tracker for unmatched nucleotides
+                    nucleotide_index:int = 0 # instantiate tracker for location in index sequence
+                    # TODO: doesn't work when length of index in mode does not match length in expected index file
+                    while unmatched_count <= hamming_distance and nucleotide_index < index1_len:
+                        if not index1_seq[nucleotide_index] == index1[nucleotide_index]:
+                            unmatched_count += 1 # count unmatched nucleotide
+                        nucleotide_index += 1 # increment to next nucleotide
+                    # break if found index within hamming distance of expected indexes
+                    if unmatched_count <= hamming_distance and nucleotide_index == index1_len:
+                        index1_match = True
+                        index1_seq = index1
+                        break
+            # loop through index2 and check for hamming distance (if index1 is valid)
+            if index1_match and not index2_match:
+                for index2 in expected_index_dict[mode]['index2']:
+                    unmatched_count:int = 0 # instantiate tracker for unmatched nucleotides
+                    nucleotide_index:int = 0 # instantiate tracker for location in index sequence
+                    while unmatched_count <= hamming_distance and nucleotide_index < index2_len:
+                        if not index2_seq[nucleotide_index] == index2[nucleotide_index]:
+                            unmatched_count += 1 # count unmatched nucleotide
+                        nucleotide_index += 1 # increment to next nucleotide
+                    # break if found index within hamming distance of expected indexes
+                    if unmatched_count <= hamming_distance and nucleotide_index == index2_len:
+                        index2_match = True
+                        index2_seq = index2
+                        break
+            # loop through index3 and check for hamming distance (if index1 and index2 are valid)
+            if index1_match and index2_match and not index3_match:
+                for index3 in expected_index_dict[mode]['index3']:
+                    unmatched_count:int = 0 # instantiate tracker for unmatched nucleotides
+                    nucleotide_index:int = 0 # instantiate tracker for location in index sequence
+                    while unmatched_count <= hamming_distance and nucleotide_index < index3_len:
+                        if not index3_seq[nucleotide_index] == index3[nucleotide_index]:
+                            unmatched_count += 1 # count unmatched nucleotide
+                        nucleotide_index += 1 # increment to next nucleotide
+                    # break if found index within hamming distance of expected indexes
+                    if unmatched_count <= hamming_distance and nucleotide_index == index3_len:
+                        index3_match = True
+                        index3_seq = index3
+                        break
+
+            # write to output if indexes match or are within hamming distance
+            if index1_match and index2_match and index3_match:
+                # prepend barcode to qname of each read
+                read1_read, read2_read = [prepend_barcode_to_qname(read, index1_seq, index2_seq, index3_seq) for read in (read1_read, read2_read)]
+                # write reads to passing output files
+                output_file_dict[mode]['R1_pass'].write("".join(read1_read))
+                output_file_dict[mode]['R2_pass'].write("".join(read2_read))
+                
+                break # break out of mode_dict loop
+
+            mode_count += 1 # increment mode count
+
+            # if all modes checked and no pass then write to fail
+            if mode_count == len(mode_dict):
+                output_file_dict[mode]['R1_fail'].write("".join(read1_read))
+                output_file_dict[mode]['R2_fail'].write("".join(read2_read))
+                output_file_dict[mode]['I1_fail'].write("".join(index1_read))
+                output_file_dict[mode]['I2_fail'].write("".join(index2_read))
+        
+    # close input files
+    for open_input_file in open_input_files:
+        open_input_file.close()
+
     return None
 
 
@@ -522,6 +705,7 @@ def main():
     )
     mode_dict:dict = generate_mode_dict(mode_list, args.mode_config_file)
 
+    # TODO: still need to address how annotation file fits into all of this
     # annot file processing
     if args.annotation_files is not None:
         annotation_files_list:list = parse_comma_separated_inputs(
@@ -537,8 +721,9 @@ def main():
     if args.delayed_mode:
         execute_delayed_mode()
 
+    # TODO: need to address single-end instances
     # define read and index input files
-    read1_file, read2_file, index1_file, index2_file = define_input_files(args)
+    input_files:tuple = define_input_files(args)
 
     # TODO: ignoring hamming index for now and instead will just address by making calculating
     # TODO: in real time while processing - avoids looping through each component of list unnecessarily
@@ -547,12 +732,23 @@ def main():
     expected_index_dict:dict = generate_expected_index_dict(mode_dict)
     
     # generate and open output file objects
-    output_file_dict:dict = generate_output_file_dict(mode_dict, args.run_folder, args.output_folder)
-    print(output_file_dict)
+    output_file_dict:dict = generate_output_file_dict(
+        mode_dict = mode_dict,
+        experiment_name = args.run_folder,
+        output_folder = args.output_folder
+    )
+    
+    # parse fastq input
+    parse_fastq_input(
+        input_files = input_files,
+        mode_dict = mode_dict,
+        expected_index_dict = expected_index_dict,
+        output_file_dict = output_file_dict,
+        hamming_distance = args.max_hamming_distance
+    )
 
     # close all files
     close_all_files(output_file_dict)
-    
 
 
 # run prgram
