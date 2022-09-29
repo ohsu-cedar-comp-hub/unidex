@@ -383,6 +383,122 @@ def define_input_files(args) -> tuple:
     return read1_file, read2_file, index1_file, index2_file
 
 
+# TODO: define dictionary components within docstrings
+def generate_expected_index_dict(mode_dict:dict) -> dict:
+    """
+    Generates expected index dictionary using expected index files for each mode in config file.
+
+    Parameters:
+    -----------
+    mode_dict : dict
+        Mode dictionary containing modes as keys and mode characateristics as values.
+
+    Returns:
+    --------
+    expected_index_dict : dict
+        Dictionary containing modes as keys with values as subdictionaries containing index name
+        as key and a list of expected indexes as values.
+    """
+
+    # instantiate dict
+    expected_index_dict:dict = {}
+
+    # extract modes and indexes from mode_dict and defined index files
+    for mode in mode_dict:
+        expected_index_dict[mode] = {}
+        for index in mode_dict[mode]['index_file_paths']:
+            with open(mode_dict[mode]['index_file_paths'][index], "r") as f:
+                expected_index_dict[mode][index] = [line.split('\t')[-1] for line in f.read().split('\n') if line]
+    
+    return expected_index_dict
+
+
+def generate_output_file_name(output_folder:str, experiment_name:str, mode:str, index_read_num:str, fail:bool=False):
+    """
+    Generates output file name
+
+    Parameters:
+    -----------
+    output_folder : str
+        Path to user-defined output folder.
+    experiment_name : str
+        User-defined experiment name.
+    mode : str
+        User-defined mode.
+    fail : bool, default False
+        Indicates whether file will be used for passing or faliing reads. True is failing reads.
+    index_read_num : str
+        The index/read letter and number (ie I1, I2, R1, R2).
+
+    Returns:
+    --------
+    file_name : str
+        Full path to new file.
+    """
+    # define experiment specific output folder
+    # TODO: maybe move this to dictionary creation function or to main()
+    experiment_output_folder = os.path.join(os.path.abspath(output_folder), experiment_name)
+    if not os.path.exists(experiment_output_folder):
+        os.mkdir(experiment_output_folder)
+    # generate file name
+    if not fail:
+        # TODO: check out how experiment name will be passed here - added basename piece in case it is a full path
+        file_name = os.path.join(experiment_output_folder, ".".join([experiment_name, mode, index_read_num, "fq.gz"]))
+    else:
+        file_name = os.path.join(experiment_output_folder, ".".join([experiment_name, "fail", index_read_num, "fq.gz"]))
+    return file_name
+
+
+# TODO: make sure naming conventions match adey unidex
+def generate_output_file_dict(mode_dict:dict, experiment_name:str, output_folder:str) -> dict:
+    """
+    Generates and opens output file locations and stores objects in dictionary
+
+    Parameters:
+    -----------
+    mode_dict : dict
+        Mode dictionary containing modes as keys and mode characateristics as values.
+    experiment_name : str
+        User-defined name of the experiment.
+    output_folder : str
+        Path to user-defined output folder.
+
+    Returns:
+    --------
+    output_file_dict : dict
+        Dictionary containing open output file objects.
+    """
+    # instantiate new dict
+    output_file_dict = {}
+
+    # loop through each mode and add to new dict
+    for mode in mode_dict:
+        output_file_dict[mode] = {
+            'R1_pass': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R1'), "w"),
+            'R2_pass': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R2'), "w"),
+            'R1_fail': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R1', True), "w"),
+            'R2_fial': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'R2', True), "w"),
+            'I1_fail': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'I1', True), "w"),
+            'I2_fail': open(generate_output_file_name(output_folder, os.path.dirname(experiment_name), mode, 'I2', True), "w")
+        }
+    return output_file_dict
+
+
+def close_all_files(output_file_dict:dict) -> None:
+    """
+    Closes all files opened in the output file dictionary.
+
+    Parameters:
+    -----------
+    output_file_dict : dict
+        Output file dict with keys and modes and values as subdictionaries with keys as read and index pass and value as open file.
+    """
+    for mode in output_file_dict:
+        for instance in output_file_dict[mode]:
+            output_file_dict[mode][instance].close()
+    return None
+
+
 # define program
 def main():
     args = parse_args()
@@ -424,7 +540,19 @@ def main():
     # define read and index input files
     read1_file, read2_file, index1_file, index2_file = define_input_files(args)
 
+    # TODO: ignoring hamming index for now and instead will just address by making calculating
+    # TODO: in real time while processing - avoids looping through each component of list unnecessarily
+    # TODO: time this to see how long it takes either way
+    # generate expected index dictionary
+    expected_index_dict:dict = generate_expected_index_dict(mode_dict)
+    
+    # generate and open output file objects
+    output_file_dict:dict = generate_output_file_dict(mode_dict, args.run_folder, args.output_folder)
+    print(output_file_dict)
 
+    # close all files
+    close_all_files(output_file_dict)
+    
 
 
 # run prgram
