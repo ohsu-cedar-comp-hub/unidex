@@ -18,35 +18,41 @@ def parse_args():
     parser = argparse.ArgumentParser(description = "Demultiplex fastq")
 
     # Info options
-    parser.add_argument("-L", "--query_mode_file", action = 'store_true', help = "List modes present in the mode config file."
+    info = parser.add_argument_group("Info options")
+    info.add_argument("-L", "--query_mode_file", action = 'store_true', help = "List modes present in the mode config file."
                             "Can specify a different mode file with -m and it will list modes in that file."
                             "Can also provide an argument to match to refine list, e.g. 's3'")
-    parser.add_argument("-I", "--request_mode_info", help = "Provide info on one or more comma separated modes as detailed in the specified"
+    info.add_argument("-I", "--request_mode_info", help = "Provide info on one or more comma separated modes as detailed in the specified"
                             "modes file (-m or default).")
 
     # Run options
-    parser.add_argument("-R", "--run_folder", help = "Run Folder (where fastq files are present)")
-    parser.add_argument("-M", "--mode_list", type = str, help = "Mode list - modes must be specified in the modes.cfg file."
+    run = parser.add_argument_group("Run options")
+    run.add_argument("-R", "--run_folder", help = "Run Folder (where fastq files are present)")
+    run.add_argument("-M", "--mode_list", type = str, help = "Mode list - modes must be specified in the modes.cfg file."
                             "Modes must be comma separated and will demultiplex in specified order listed.")
-    parser.add_argument("-l", "--delayed_mode", action = 'store_true', help = "Delayed mode. Will wait until fastq files are propagated"
+    run.add_argument("-l", "--delayed_mode", action = 'store_true', help = "Delayed mode. Will wait until fastq files are propagated"
                             "in the specified fastq directory (-r), then will run."
                             "Only works when specifying run name, not individual fastq files.")
 
     # Default options
-    parser.add_argument("-O", "--output_folder", help = "Output folder (def = run name, -R)")
-    parser.add_argument("-d", "--max_hamming_distance", help = "Max allowed hamming distance", type = int, default = 2)
+    default = parser.add_argument_group("Default options")
+    default.add_argument("-O", "--output_folder", help = "Output folder (def = run name, -R)")
+    default.add_argument("-d", "--max_hamming_distance", help = "Max allowed hamming distance", type = int, default = 2)
 
     # Default locations
-    parser.add_argument("-m", "--mode_config_file", help = "Mode config file", required = True)
+    default_locations = parser.add_argument_group("Default locations")
+    default_locations.add_argument("-m", "--mode_config_file", help = "Mode config file", required = True)
 
     # Fastq input (default = auto detect):
-    parser.add_argument("-1", "--read1_file", help = "Read 1 fastq")
-    parser.add_argument("-4", "--read2_file", help = "Read 2 fastq")
-    parser.add_argument("-2", "--index1_file", help = "Index 1 fastq")
-    parser.add_argument("-3", "--index2_file", help = "Index 2 fastq")
+    fastq_input = parser.add_argument_group("Fastq input")
+    fastq_input.add_argument("-1", "--read1_file", help = "Read 1 fastq")
+    fastq_input.add_argument("-4", "--read2_file", help = "Read 2 fastq")
+    fastq_input.add_argument("-2", "--index1_file", help = "Index 1 fastq")
+    fastq_input.add_argument("-3", "--index2_file", help = "Index 2 fastq")
 
     # Other options
-    parser.add_argument("-A", "--annotation_files", type = str, help = "Annotation file(s), comma separated with mode specified"
+    other = parser.add_argument_group("Other options")
+    other.add_argument("-A", "--annotation_files", type = str, help = "Annotation file(s), comma separated with mode specified"
                             "If only one mode is specified, then it will default to that mode."
                             "[mode1]=[annot_file1],[mode2]=[annot_file2],etc... OR"
                             "First column of annot file designated mode for that annot")
