@@ -285,9 +285,12 @@ def generate_annotation_dict(annotation_files_list:list, mode_list:list=None) ->
     Returns:
     --------
     annotation_dict : dict
+        Dictionary to be used for mapping barcodes to annotation subjects.
+    annotation_subjects_dict : dict
+        Dictionary to be used for generating output files.
     """
-    # instantiate empty annotation dictionary
-    annotation_dict:dict = {}
+    annotation_dict:dict = {} # instantiate empty annotation dictionary
+    annotation_subjects_dict:dict = {} # instantiate empty dictionary of unique subjects by mode
 
     # process each annotation file
     for i, annotation_file in enumerate(annotation_files_list):
@@ -315,7 +318,10 @@ def generate_annotation_dict(annotation_files_list:list, mode_list:list=None) ->
         # add mode to annotation dict
         if mode not in annotation_dict:
             annotation_dict[mode] = {}
+        if mode not in annotation_subjects_dict:
+            annotation_subjects_dict[mode] = set()
         annotation_dict[mode][cellID] = annot
+        annotation_subjects_dict[mode].add(annot)
 
         # process entire file
         while True:
@@ -326,14 +332,17 @@ def generate_annotation_dict(annotation_files_list:list, mode_list:list=None) ->
                 mode, cellID, annot = line # extract all three columns
                 if mode not in annotation_dict:
                     annotation_dict[mode] = {}
+                if mode not in annotation_subjects_dict:
+                    annotation_subjects_dict[mode] = set()
             else:
                 cellID, annot = line # extract only two columns if mode specified in command line        
             annotation_dict[mode][cellID] = annot # add instance to dictionary
-        
+            annotation_subjects_dict[mode].add(annot) # add instance to subject dictionary
+            
         logging.info("Total lines processed for annotation file '{}': {}".format(annotation_file, len(annotation_dict[mode])))
         open_annotation_file.close()
 
-    return annotation_dict
+    return annotation_dict, annotation_subjects_dict
 
 
 # TODO: build this out
@@ -457,7 +466,14 @@ def generate_expected_index_dict(mode_dict:dict, hamming_distance:int) -> dict:
     return expected_index_dict
 
 
-def generate_output_file_name(output_folder:str, experiment_name:str, mode:str, index_read_num:str, fail:bool=False):
+def generate_output_file_name(
+    output_folder:str,
+    experiment_name:str,
+    mode:str,
+    index_read_num:str,
+    fail:bool=False,
+    annotation_subject:str=None
+):
     """
     Generates output file name
 
@@ -469,10 +485,12 @@ def generate_output_file_name(output_folder:str, experiment_name:str, mode:str, 
         User-defined experiment name.
     mode : str
         User-defined mode.
-    fail : bool, default False
-        Indicates whether file will be used for passing or faliing reads. True is failing reads.
     index_read_num : str
         The index/read letter and number (ie I1, I2, R1, R2).
+    fail : bool, default False
+        Indicates whether file will be used for passing or faliing reads. True is failing reads.
+    annotation_subject : str, default None
+        If an annotation file was specified, then output file names will need to include annotation subject name.
 
     Returns:
     --------
@@ -486,15 +504,22 @@ def generate_output_file_name(output_folder:str, experiment_name:str, mode:str, 
         os.mkdir(experiment_output_folder)
     # generate file name
     if not fail:
-        # TODO: check out how experiment name will be passed here - added basename piece in case it is a full path
-        file_name = os.path.join(experiment_output_folder, ".".join([experiment_name, mode, index_read_num, "fq"]))
+        if annotation_subject is None:
+            file_name = os.path.join(experiment_output_folder, ".".join([experiment_name, mode, index_read_num, "fq"]))
+        else:
+            file_name = os.path.join(experiment_output_folder, ".".join([experiment_name, mode, annotation_subject, index_read_num, "fq"]))
     else:
         file_name = os.path.join(experiment_output_folder, ".".join([experiment_name, "fail", index_read_num, "fq"]))
     return file_name
 
 
 # TODO: make sure naming conventions match adey unidex
-def generate_output_file_dict(mode_dict:dict, experiment_name:str, output_folder:str) -> dict:
+def generate_output_file_dict(
+    mode_dict:dict,
+    experiment_name:str,
+    output_folder:str,
+    annotation_subjects_dict:dict=None
+) -> dict:
     """
     Generates and opens output file locations and stores objects in dictionary
 
@@ -506,69 +531,108 @@ def generate_output_file_dict(mode_dict:dict, experiment_name:str, output_folder
         User-defined name of the experiment.
     output_folder : str
         Path to user-defined output folder.
+    annotation_subjects_dict : dict, default None
+        Dictionary to be used for generating output files.
 
     Returns:
     --------
-    output_file_dict : dict
-        Dictionary containing open output file objects.
+    passing_output_file_dict : dict
+        Dictionary containing open output file objects for passing reads.
     """
-    # instantiate new dict
-    output_file_dict = {}
+    # instantiate output file dict with fail keys (not mode dependent)
+    failing_output_file_dict:dict = {
+        'R1_fail': open(generate_output_file_name(
+            output_folder = output_folder,
+            experiment_name = os.path.dirname(experiment_name),
+            mode = None,
+            index_read_num = 'R1',
+            fail = True), "w"),
+        'R2_fail': open(generate_output_file_name(
+            output_folder = output_folder,
+            experiment_name = os.path.dirname(experiment_name),
+            mode = None,
+            index_read_num = 'R2',
+            fail = True), "w"),
+        'I1_fail': open(generate_output_file_name(
+            output_folder = output_folder, 
+            experiment_name = os.path.dirname(experiment_name),
+            mode = None,
+            index_read_num = 'I1',
+            fail = True), "w"),
+        'I2_fail': open(generate_output_file_name(
+            output_folder = output_folder,
+            experiment_name = os.path.dirname(experiment_name),
+            mode = None,
+            index_read_num = 'I2',
+            fail = True), "w")
+    }
 
-    # loop through each mode and add to new dict
-    for mode in mode_dict:
-        output_file_dict[mode] = {
-            # TODO: address single-end sequencing situations - need to be more dynamic here
-            'R1_pass': open(generate_output_file_name(
-                output_folder = output_folder,
-                experiment_name = os.path.dirname(experiment_name),
-                mode = mode,
-                index_read_num = 'R1'), "w"),
-            'R2_pass': open(generate_output_file_name(
-                output_folder = output_folder,
-                experiment_name = os.path.dirname(experiment_name),
-                mode = mode,
-                index_read_num = 'R2'), "w"),
-            'R1_fail': open(generate_output_file_name(
-                output_folder = output_folder,
-                experiment_name = os.path.dirname(experiment_name),
-                mode = mode,
-                index_read_num = 'R1',
-                fail = True), "w"),
-            'R2_fail': open(generate_output_file_name(
-                output_folder = output_folder,
-                experiment_name = os.path.dirname(experiment_name),
-                mode = mode,
-                index_read_num = 'R2',
-                fail = True), "w"),
-            'I1_fail': open(generate_output_file_name(
-                output_folder = output_folder, 
-                experiment_name = os.path.dirname(experiment_name),
-                mode = mode,
-                index_read_num = 'I1',
-                fail = True), "w"),
-            'I2_fail': open(generate_output_file_name(
-                output_folder = output_folder,
-                experiment_name = os.path.dirname(experiment_name),
-                mode = mode,
-                index_read_num = 'I2',
-                fail = True), "w")
-        }
-    return output_file_dict
+    # instantiate dictionary for passing output file
+    passing_output_file_dict:dict = {}
+
+    # if no annotations specified then generate simple dictionary
+    if annotation_subjects_dict is None:
+        # loop through each mode and add to new dict
+        for mode in mode_dict:
+            passing_output_file_dict[mode] = {
+                # TODO: address single-end sequencing situations - need to be more dynamic here
+                'R1_pass': open(generate_output_file_name(
+                    output_folder = output_folder,
+                    experiment_name = os.path.dirname(experiment_name),
+                    mode = mode,
+                    index_read_num = 'R1'), "w"),
+                'R2_pass': open(generate_output_file_name(
+                    output_folder = output_folder,
+                    experiment_name = os.path.dirname(experiment_name),
+                    mode = mode,
+                    index_read_num = 'R2'), "w")
+            }
+    # if there are annotation files specified, the output files must include annotation names
+    else:
+        for mode in annotation_subjects_dict:
+            passing_output_file_dict[mode] = {}
+            for annotation_subject in annotation_subjects_dict:
+                passing_output_file_dict[mode][annotation_subject] = {
+                    'R1_pass': open(generate_output_file_name(
+                        output_folder = output_folder,
+                        experiment_name = os.path.dirname(experiment_name),
+                        mode = mode,
+                        index_read_num = 'R1',
+                        annotation_subject = annotation_subject), 'w'),
+                    'R2_pass': open(generate_output_file_name(
+                        output_folder = output_folder,
+                        experiment_name = os.path.dirname(experiment_name),
+                        mdoe = mode,
+                        index_read_num = 'R2',
+                        annotation_subject = annotation_subject), 'w')
+                }
+    return passing_output_file_dict, failing_output_file_dict
 
 
-def close_all_files(output_file_dict:dict) -> None:
+def close_all_files(passing_output_file_dict:dict, failing_output_file_dict:dict, annotation_file_used:bool=False) -> None:
     """
     Closes all files opened in the output file dictionary.
 
     Parameters:
     -----------
-    output_file_dict : dict
-        Output file dict with keys and modes and values as subdictionaries with keys as read and index pass and value as open file.
+    passing_output_file_dict : dict
+
+    failing_output_file_dict : dict
+
+    annotation_file_used : bool, default False
+        Indicates if annotation file was used. Changes structure of the passing_output_file_dict. 
+
     """
-    for mode in output_file_dict:
-        for instance in output_file_dict[mode]:
-            output_file_dict[mode][instance].close()
+    for instance in failing_output_file_dict:
+        failing_output_file_dict[instance].close()
+    for mode in passing_output_file_dict:
+        if annotation_file_used:
+            for annotation_subject in passing_output_file_dict[mode]:
+                for instance in passing_output_file_dict[mode][annotation_subject]:
+                    passing_output_file_dict[mode][annotation_subject][instance].close()
+        else:
+            for instance in passing_output_file_dict[mode]:
+                passing_output_file_dict[mode][instance].close()
     return None
 
 
@@ -648,7 +712,9 @@ def parse_fastq_input(
     input_files:tuple,
     mode_dict:dict,
     expected_index_dict:dict,
-    output_file_dict:dict,
+    passing_output_file_dict:dict,
+    failing_output_file_dict:dict,
+    annotation_dict:dict=None
 ) -> tuple:
     """
     Processes fastqs, separating reads by mode, pass, and fail.
@@ -662,8 +728,12 @@ def parse_fastq_input(
     expected_index_dict : dict
         Dictionary containing modes as keys with values as subdictionaries containing index name
         as key and a list of expected indexes as values.
-    output_file_dict : dict
-        Dictionary containing open output file objects.
+    passing_output_file_dict : dict
+
+    failing_output_file_dict : dict
+
+    annotation_dict : dict, default None
+        Annotation dictionary containing associations between barcodes and subjects.
 
     Returns:
     --------
@@ -723,8 +793,8 @@ def parse_fastq_input(
                 if sum([mode_dict[mode]['read2'][key] for key in mode_dict[mode]['read2']]) > 0:
                     read2_read = slice_read(read2_read, sum([mode_dict[mode]['read2'][key] for key in mode_dict[mode]['read2']]))
                 # write reads to passing output files
-                output_file_dict[mode]['R1_pass'].write("".join(read1_read))
-                output_file_dict[mode]['R2_pass'].write("".join(read2_read))
+                passing_output_file_dict[mode]['R1_pass'].write("".join(read1_read))
+                passing_output_file_dict[mode]['R2_pass'].write("".join(read2_read))
                 
                 passed_reads += 1 # count the passed read
                 break # break out of mode_dict loop
@@ -733,10 +803,10 @@ def parse_fastq_input(
 
             # if all modes checked and no pass then write to fail
             if mode_count == len(mode_dict):
-                output_file_dict[mode]['R1_fail'].write("".join(read1_read))
-                output_file_dict[mode]['R2_fail'].write("".join(read2_read))
-                output_file_dict[mode]['I1_fail'].write("".join(index1_read))
-                output_file_dict[mode]['I2_fail'].write("".join(index2_read))
+                failing_output_file_dict['R1_fail'].write("".join(read1_read))
+                failing_output_file_dict['R2_fail'].write("".join(read2_read))
+                failing_output_file_dict['I1_fail'].write("".join(index1_read))
+                failing_output_file_dict['I2_fail'].write("".join(index2_read))
                 failed_reads += 1 # count the failed read
         
         # update statment
@@ -800,13 +870,12 @@ def main():
     )
     mode_dict:dict = generate_mode_dict(mode_list, args.mode_config_file)
 
-    # TODO: still need to address how annotation file fits into all of this
     # annot file processing
     if args.annotation_files is not None:
         annotation_files_list:list = parse_comma_separated_inputs(
             comma_separated_input_string = args.annotation_files
         )
-        annotation_dict:dict = generate_annotation_dict(
+        annotation_dict, annotation_subjects_dict = generate_annotation_dict(
             annotation_files_list = annotation_files_list,
             mode_list = mode_list
         )
@@ -827,10 +896,11 @@ def main():
     )
 
     # generate and open output file objects
-    output_file_dict:dict = generate_output_file_dict(
+    passing_output_file_dict, failing_output_file_dict = generate_output_file_dict(
         mode_dict = mode_dict,
         experiment_name = args.run_folder,
-        output_folder = args.output_folder
+        output_folder = args.output_folder,
+        annotation_subjects_dict = annotation_subjects_dict if args.annotation_files is not None else None
     )
     
     # parse fastq input
@@ -838,11 +908,17 @@ def main():
         input_files = input_files,
         mode_dict = mode_dict,
         expected_index_dict = expected_index_dict,
-        output_file_dict = output_file_dict
+        passing_output_file_dict = passing_output_file_dict,
+        failing_output_file_dict = failing_output_file_dict,
+        annotation_dict = annotation_dict if args.annotation_files is not None else None
     )
 
     # close all files
-    close_all_files(output_file_dict)
+    close_all_files(
+        passing_output_file_dict = passing_output_file_dict,
+        failing_output_file_dict = failing_output_file_dict,
+        annotation_file_used = True if args.annotation_files is not None else False
+    )
 
     # log results
     output_summary(total_reads, passed_reads, failed_reads, corrected_barcodes)
