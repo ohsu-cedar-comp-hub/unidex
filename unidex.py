@@ -271,16 +271,16 @@ def add_mode_to_dict(mode_components:list, mode_dict:dict) -> dict:
     return mode_dict
 
 
-def generate_annotation_dict(annotation_files_list:list, mode_list:list) -> dict:
+def generate_annotation_dict(annotation_files_list:list, mode_list:list=None) -> dict:
     """
     Process annotation file(s).
 
     Parameters:
     -----------
     annotation_files_list : list
-        List of all annotation files.
-    mode_list : list
-        List of corresponding mode designation for each annotation file.
+        List of all annotation files with specified mode. Format is [mode1]=[annot_file1]
+    mode_list : list, default = None
+        List of corresponding mode designation for each annotation file. Default value is None, as mode could be specified in annotation file.
     
     Returns:
     --------
@@ -292,19 +292,45 @@ def generate_annotation_dict(annotation_files_list:list, mode_list:list) -> dict
     # process each annotation file
     for i, annotation_file in enumerate(annotation_files_list):
         logging.info("Processing annotation file: {}".format(annotation_file))
-        annotation_dict[annotation_file] = {} # set mode to corresponding value from mode_list
-        annotation_dict[annotation_file][mode_list[i]] = {}
-        open_annotation_file = open(annotation_file, 'r')
         
-        # process each line of annotation file
+        mode_in_annot_file:bool = False # default is for mode to specified at command line
+        lines_processed:int = 0 # instantiate line tracker
+
+        # mode specified in command line
+        if "=" in annotation_file:
+            mode, annotation_file = annotation_file.split("=")
+        elif mode_list is not None:
+            mode = mode_list[i]
+
+        open_annotation_file = open(annotation_file, 'r')
+        # process first line to assess if mode is specified in annot file
+        line = open_annotation_file.readline().strip().split()
+        if len(line) == 3:
+            logging.info("Modes specified in annot file: {}".format(annotation_file))
+            mode_in_annot_file = True
+            mode, cellID, annot = line
+        else:
+            cellID, annot = line
+
+        # add mode to annotation dict
+        if mode not in annotation_dict:
+            annotation_dict[mode] = {}
+        annotation_dict[mode][cellID] = annot
+
+        # process entire file
         while True:
             line = open_annotation_file.readline().strip().split()            
             if not line: # break if end of file
                 break
-            cellID, annot = line # exctract cell id and annotation from current line            
-            annotation_dict[annotation_file][mode_list[i]][cellID] = annot # add instance dictionary
+            if mode_in_annot_file: # may be multiple modes within annotation file
+                mode, cellID, annot = line # extract all three columns
+                if mode not in annotation_dict:
+                    annotation_dict[mode] = {}
+            else:
+                cellID, annot = line # extract only two columns if mode specified in command line        
+            annotation_dict[mode][cellID] = annot # add instance to dictionary
         
-        logging.info("Total lines processed for annotation file '{}': {}".format(annotation_file, len(annotation_dict[annotation_file][mode_list[i]])))
+        logging.info("Total lines processed for annotation file '{}': {}".format(annotation_file, len(annotation_dict[mode])))
         open_annotation_file.close()
 
     return annotation_dict
@@ -613,8 +639,8 @@ def slice_read(read:list, slice:int) -> list:
     read : list
         List containing four components of read after slicing.
     """
-    read[1] = read[1][slice:]
-    read[3] = read[3][slice:]
+    read[1] = read[1][slice:] # slice read sequence
+    read[3] = read[3][slice:] # slice quality scores
     return read
 
 
