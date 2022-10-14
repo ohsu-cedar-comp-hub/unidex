@@ -366,7 +366,7 @@ def define_input_files(args) -> tuple:
     read2_file:str = ""
     idnex1_file:str = ""
     index2_file:str = ""
-
+    
     # define read 1
     if args.read1_file is not None:
         read1_file = os.path.abspath(args.read1_file)
@@ -523,35 +523,35 @@ def generate_output_file_dict(mode_dict:dict, experiment_name:str, output_folder
                 output_folder = output_folder,
                 experiment_name = os.path.dirname(experiment_name),
                 mode = mode,
-                index_read_name = 'R1'), "w"),
+                index_read_num = 'R1'), "w"),
             'R2_pass': open(generate_output_file_name(
                 output_folder = output_folder,
                 experiment_name = os.path.dirname(experiment_name),
                 mode = mode,
-                index_read_name = 'R2'), "w"),
+                index_read_num = 'R2'), "w"),
             'R1_fail': open(generate_output_file_name(
                 output_folder = output_folder,
                 experiment_name = os.path.dirname(experiment_name),
                 mode = mode,
-                index_read_name = 'R1',
+                index_read_num = 'R1',
                 fail = True), "w"),
             'R2_fail': open(generate_output_file_name(
                 output_folder = output_folder,
                 experiment_name = os.path.dirname(experiment_name),
                 mode = mode,
-                index_read_name = 'R2',
+                index_read_num = 'R2',
                 fail = True), "w"),
             'I1_fail': open(generate_output_file_name(
                 output_folder = output_folder, 
                 experiment_name = os.path.dirname(experiment_name),
                 mode = mode,
-                index_read_name = 'I1',
+                index_read_num = 'I1',
                 fail = True), "w"),
             'I2_fail': open(generate_output_file_name(
                 output_folder = output_folder,
                 experiment_name = os.path.dirname(experiment_name),
                 mode = mode,
-                index_read_name = 'I2',
+                index_read_num = 'I2',
                 fail = True), "w")
         }
     return output_file_dict
@@ -712,7 +712,7 @@ def parse_fastq_input(
             true_index3_seq:str = expected_index_dict[mode]['index3'][index3_seq] if index3_seq in expected_index_dict[mode]['index3'] else None
 
             # write to output if indexes match or are within hamming distance
-            if index1_seq is not None and index2_seq is not None and index3_seq is not None:
+            if true_index1_seq is not None and true_index2_seq is not None and true_index3_seq is not None:
                 # increment corrected barcodes if at least one index was corrected
                 # TODO: tracking the number of corrected barcodes is non-functional with new hash table index metho
                 if true_index1_seq != index1_seq or true_index2_seq != index2_seq or true_index3_seq != index3_seq:
