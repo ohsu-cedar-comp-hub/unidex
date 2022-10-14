@@ -591,7 +591,7 @@ def generate_output_file_dict(
     else:
         for mode in annotation_subjects_dict:
             passing_output_file_dict[mode] = {}
-            for annotation_subject in annotation_subjects_dict:
+            for annotation_subject in annotation_subjects_dict[mode]:
                 passing_output_file_dict[mode][annotation_subject] = {
                     'R1_pass': open(generate_output_file_name(
                         output_folder = output_folder,
@@ -602,7 +602,7 @@ def generate_output_file_dict(
                     'R2_pass': open(generate_output_file_name(
                         output_folder = output_folder,
                         experiment_name = os.path.dirname(experiment_name),
-                        mdoe = mode,
+                        mode = mode,
                         index_read_num = 'R2',
                         annotation_subject = annotation_subject), 'w')
                 }
@@ -793,8 +793,15 @@ def parse_fastq_input(
                 if sum([mode_dict[mode]['read2'][key] for key in mode_dict[mode]['read2']]) > 0:
                     read2_read = slice_read(read2_read, sum([mode_dict[mode]['read2'][key] for key in mode_dict[mode]['read2']]))
                 # write reads to passing output files
-                passing_output_file_dict[mode]['R1_pass'].write("".join(read1_read))
-                passing_output_file_dict[mode]['R2_pass'].write("".join(read2_read))
+                if annotation_dict is not None:
+                    # TODO: this should probbly be a function - will need to be more dynamic
+                    read_barcode = "".join([true_index1_seq, true_index2_seq, true_index3_seq])
+                    annotation_subject = annotation_dict[mode][read_barcode]
+                    passing_output_file_dict[mode][annotation_subject]['R1_pass'].write("".join(read1_read))
+                    passing_output_file_dict[mode][annotation_subject]['R2_pass'].write("".join(read2_read))
+                else:
+                    passing_output_file_dict[mode]['R1_pass'].write("".join(read1_read))
+                    passing_output_file_dict[mode]['R2_pass'].write("".join(read2_read))
                 
                 passed_reads += 1 # count the passed read
                 break # break out of mode_dict loop
