@@ -41,6 +41,7 @@ def parse_args():
 
     # Default locations
     default_locations = parser.add_argument_group("Default locations")
+    default_locations.add_argument("-r", "--fastq_folder", help = "Fastq folder full path.", type = str)
     default_locations.add_argument("-m", "--mode_config_file", help = "Mode config file", required = True)
 
     # Fastq input (default = auto detect):
@@ -437,18 +438,18 @@ def generate_expected_index_dict(mode_dict:dict, hamming_distance:int) -> dict:
     -----------
     mode_dict : dict
         Mode dictionary containing modes as keys and mode characateristics as values.
-    hamming_dist : 2
+    hamming_distance : 2
         Maximum allowable hamming distance for each index.
 
     Returns:
     --------
     expected_index_dict : dict
-        Dictionary containing modes as keys with values as subdictionaries containing index name
-        as key and a list of expected indexes as values.
+        Dictionary containing modes as keys with values as subditionaries containing hamming distance
+        possible indexes as keys and true indexes as values.
     """
 
-    # instantiate dict
-    expected_index_dict:dict = {}
+    # instantiate dicts
+    expected_index_dict:dict = {} # dictionary mapping hamming distance indexes to true indexes
 
     # extract modes and indexes from mode_dict and defined index files
     for mode in mode_dict:
@@ -458,17 +459,34 @@ def generate_expected_index_dict(mode_dict:dict, hamming_distance:int) -> dict:
                 expected_index_dict[mode][index] = {line.split('\t')[-1]:line.split('\t')[-1] for line in f.read().split('\n') if line}
     
     # generate hamming distance possibilities
-    for index in expected_index_dict[mode]:
-        expected_sequences = list(expected_index_dict[mode][index].keys())
-        for c in itertools.combinations(list(range(len(expected_sequences[0]))), hamming_distance):
-            for sequence in expected_sequences:
-                alternative_sequence = list(sequence)
-                for sequence_index in c:
-                    alternative_sequence[sequence_index] = '[ATGCN]'
-                alternative_sequence = "".join(alternative_sequence)
-                for instance_alternative_sequence in exrex.generate(alternative_sequence):
-                    expected_index_dict[mode][index][instance_alternative_sequence] = sequence
-    
+    ignore_hamming_distance_priority:bool = True # TODO: option to prioritize smaller hamming distance in collision
+    if hamming_distance > 0:
+        for index in expected_index_dict[mode]:
+            expected_sequences = list(expected_index_dict[mode][index].keys())
+            encountered_sequences = set(expected_sequences)
+            # loop through hamming distance step wise
+            for instance_hamming_distance in range(1, hamming_distance + 1):
+                logging.info("Generating alternative {} sequences for hamming distance: {}".format(index, instance_hamming_distance))
+                hamming_distance_alternative_sequences_encountered:set = set() # tracks indexes of higher priority
+                # generate combinations for given hamming distance
+                for c in itertools.combinations(list(range(len(expected_sequences[0]))), instance_hamming_distance):
+                    for sequence in expected_sequences:
+                        alternative_sequence = list(sequence)
+                        for sequence_index in c:
+                            alternative_sequence[sequence_index] = '[ATGCN]'
+                        alternative_sequence = "".join(alternative_sequence)
+                        alternative_sequences = exrex.generate(alternative_sequence)
+                        for instance_alternative_sequence in alternative_sequences:
+                            if not instance_alternative_sequence in expected_index_dict[mode][index]:
+                                expected_index_dict[mode][index][instance_alternative_sequence] = sequence
+                                hamming_distance_alternative_sequences_encountered.add(instance_alternative_sequence) # tracks current hamming distance instances
+                            elif instance_alternative_sequence not in expected_sequences and ignore_hamming_distance_priority:
+                                expected_index_dict[mode][index][instance_alternative_sequence] = 'ambiguous'
+                            # if alternative sequence already in dictionary then hamming distance collision exists and should be marked as ambiguous
+                            elif instance_alternative_sequence in hamming_distance_alternative_sequences_encountered and not ignore_hamming_distance_priority: # avoids removing indexes of higher priority
+                                expected_index_dict[mode][index][instance_alternative_sequence] = 'ambiguous'
+                        # add hamming distance indexes to indexes list of higher priority
+                    encountered_sequences.update(hamming_distance_alternative_sequences_encountered)
     return expected_index_dict
 
 
@@ -757,6 +775,7 @@ def parse_fastq_input(
     passed_reads:int = 0
     failed_reads:int = 0
     corrected_barcodes:int = 0
+    ambiguous_barcodes:int = 0 # tracks reads thrown out due to hamming distance collision
 
     # open all input files
     open_input_files:list = [gzip.open(input_file, "rt") for input_file in input_files]
@@ -771,7 +790,12 @@ def parse_fastq_input(
         total_reads += 1 # increment total reads
 
         mode_count:int = 0 # isntantiate mode count tracker - used to determine if all modes checked and should write reads to fail
+        ambiguous_index_encountered:bool = False # tracks if ambiguous read found due to hamming distance collision
+        
         for mode in mode_dict:
+
+            mode_count += 1 # increment mode count
+
             # TODO: make more dynamic (ie index4)
             # extract each index len and seq
             index1_len:int = mode_dict[mode]['index1']['index1']
@@ -787,8 +811,11 @@ def parse_fastq_input(
             true_index2_seq:str = expected_index_dict[mode]['index2'][index2_seq] if index2_seq in expected_index_dict[mode]['index2'] else None
             true_index3_seq:str = expected_index_dict[mode]['index3'][index3_seq] if index3_seq in expected_index_dict[mode]['index3'] else None
 
+            # hamming distance collision
+            if true_index1_seq == 'ambiguous' or true_index2_seq == 'ambiguous' or true_index3_seq == 'ambiguous':
+                ambiguous_index_encountered = True
             # write to output if indexes match or are within hamming distance
-            if true_index1_seq is not None and true_index2_seq is not None and true_index3_seq is not None:
+            elif true_index1_seq is not None and true_index2_seq is not None and true_index3_seq is not None:
                 # increment corrected barcodes if at least one index was corrected
                 # TODO: tracking the number of corrected barcodes is non-functional with new hash table index metho
                 if true_index1_seq != index1_seq or true_index2_seq != index2_seq or true_index3_seq != index3_seq:
@@ -812,8 +839,6 @@ def parse_fastq_input(
                 passed_reads += 1 # count the passed read
                 break # break out of mode_dict loop
 
-            mode_count += 1 # increment mode count
-
             # if all modes checked and no pass then write to fail
             if mode_count == len(mode_dict):
                 failing_output_file_dict['R1_fail'].write("".join(read1_read))
@@ -821,6 +846,10 @@ def parse_fastq_input(
                 failing_output_file_dict['I1_fail'].write("".join(index1_read))
                 failing_output_file_dict['I2_fail'].write("".join(index2_read))
                 failed_reads += 1 # count the failed read
+                
+                # count ambiguous barcode if hamming distance collision encountered
+                if ambiguous_index_encountered:
+                    ambiguous_barcodes += 1
         
         # update statment
         if total_reads % 1000000 == 0:
@@ -830,14 +859,15 @@ def parse_fastq_input(
     for open_input_file in open_input_files:
         open_input_file.close()
 
-    return total_reads, passed_reads, failed_reads, corrected_barcodes
+    return total_reads, passed_reads, failed_reads, corrected_barcodes, ambiguous_barcodes
 
 
 def output_summary(
     total_reads:int,
     passed_reads:int,
     failed_reads:int,
-    corrected_barcodes:int
+    corrected_barcodes:int,
+    ambiguous_barcodes:int
 ) -> None:
     """
     Outputs summary stats to console.
@@ -852,11 +882,14 @@ def output_summary(
         Total reads that failed and were output to failing files.
     corrected_barcodes: int
         Total barcodes that were succesfully corrected.
+    ambiguous_barcodes : int
+        Total barcodes thrown out due to hamming distance collision.
     """
     logging.info("Total reads processed: {}".format(total_reads))
     logging.info("Total passing reads: {}".format(passed_reads))
     logging.info("Total failed reads: {}".format(failed_reads))
     logging.info("Total corrected barcodes: {}".format(corrected_barcodes))
+    logging.info("Total barcodes thrown out due to hamming distance collision: {}".format(ambiguous_barcodes))
     return None
 
 
@@ -917,7 +950,7 @@ def main():
     )
     
     # parse fastq input
-    total_reads, passed_reads, failed_reads, corrected_barcodes = parse_fastq_input(
+    total_reads, passed_reads, failed_reads, corrected_barcodes, ambiguous_barcodes = parse_fastq_input(
         input_files = input_files,
         mode_dict = mode_dict,
         expected_index_dict = expected_index_dict,
@@ -934,7 +967,7 @@ def main():
     )
 
     # log results
-    output_summary(total_reads, passed_reads, failed_reads, corrected_barcodes)
+    output_summary(total_reads, passed_reads, failed_reads, corrected_barcodes, ambiguous_barcodes)
 
 
 # run prgram
