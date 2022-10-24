@@ -149,7 +149,7 @@ def validate_run_options(args) -> None:
     args : type
         Arguments specified by user
     """
-    if args.run_folder is None:
+    if args.fastq_folder is None:
         if args.read1_file is not None or args.read2_file is not None or args.index1_file is not None or args.index2_file is not None:
             if args.output_folder is not None:
                 sys.exit("ERROR: When not supplying -R and instead specifying individual fastq files, an output name must be provided (-O).")
@@ -386,8 +386,8 @@ def define_input_files(args) -> tuple:
     # define read 1
     if args.read1_file is not None:
         read1_file = os.path.abspath(args.read1_file)
-    elif args.run_folder is not None:
-        read1_file = os.path.abspath(os.path.join(args.run_folder, "Undetermined_S0_L001_R1_001.fastq.gz"))
+    elif args.fastq_folder is not None:
+        read1_file = os.path.abspath(os.path.join(args.fastq_folder, "Undetermined_S0_L001_R1_001.fastq.gz"))
         if not os.path.exists(read1_file):
             sys.exit("ERROR: Read1 file does not exist {}".format(read1_file))
     else:
@@ -396,8 +396,8 @@ def define_input_files(args) -> tuple:
     # define read 2
     if args.read2_file is not None:
         read2_file = os.path.abspath(args.read2_file)
-    elif args.run_folder is not None:
-        read2_file = os.path.abspath(os.path.join(args.run_folder, "Undetermined_S0_L001_R2_001.fastq.gz"))
+    elif args.fastq_folder is not None:
+        read2_file = os.path.abspath(os.path.join(args.fastq_folder, "Undetermined_S0_L001_R2_001.fastq.gz"))
         if not os.path.exists(read2_file):
             logging.info("No read 2 file detected at path {}.\nMoving forward with single end read.".format(read2_file))
             read2_file = ""
@@ -405,8 +405,8 @@ def define_input_files(args) -> tuple:
     # define index 1
     if args.index1_file is not None:
         index1_file = os.path.abspath(args.index1_file)
-    elif args.run_folder is not None:
-        index1_file = os.path.abspath(os.path.join(args.run_folder, "Undetermined_S0_L001_I1_001.fastq.gz"))
+    elif args.fastq_folder is not None:
+        index1_file = os.path.abspath(os.path.join(args.fastq_folder, "Undetermined_S0_L001_I1_001.fastq.gz"))
         if not os.path.exists(index1_file):
             logging.info("No index 1 file detected at path {}".format(index1_file))
             index1_file = ""
@@ -414,8 +414,8 @@ def define_input_files(args) -> tuple:
     # define index 2    
     if args.index2_file is not None:
         index2_file = os.path.abspath(args.index2_file)
-    elif args.run_folder is not None:
-        index2_file = os.path.abspath(os.path.join(args.run_folder, "Undetermined_S0_L001_I2_001.fastq.gz"))
+    elif args.fastq_folder is not None:
+        index2_file = os.path.abspath(os.path.join(args.fastq_folder, "Undetermined_S0_L001_I2_001.fastq.gz"))
         if not os.path.exists(index2_file):
             logging.info("No index 2 file detected at path {}".format(index2_file))
             index2_file = ""
@@ -528,7 +528,7 @@ def generate_output_file_name(
     # define experiment specific output folder
     # TODO: maybe move this to dictionary creation function or to main()
     experiment_output_folder = os.path.join(os.path.abspath(output_folder), experiment_name)
-    print(experiment_output_folder)
+    logging.info("Outputting files to: {}".format(experiment_output_folder))
     if not os.path.exists(experiment_output_folder):
         os.mkdir(experiment_output_folder)
     # generate file name
@@ -946,10 +946,17 @@ def main():
         hamming_distance = args.max_hamming_distance
     )
 
+    # define experiment name
+    if args.run_folder is not None:
+        experiment_name = os.path.basename(args.run_folder)
+    else:
+        experiment_name = os.path.basename(args.fastq_folder)
+    logging.info("User has defined experiment name: {}".format(experiment_name))
+
     # generate and open output file objects
     passing_output_file_dict, failing_output_file_dict = generate_output_file_dict(
         mode_dict = mode_dict,
-        experiment_name = os.path.basename(args.run_folder),
+        experiment_name = experiment_name,
         output_folder = args.output_folder,
         annotation_subjects_dict = annotation_subjects_dict if args.annotation_files is not None else None
     )
