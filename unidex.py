@@ -208,7 +208,7 @@ def generate_mode_dict(mode_list:list, mode_config_file:str) -> dict:
         Dictionary containing the characterisits of each specified mode.
     """
 
-    logging.info("Generating mode dictionary")
+    logging.info("Generating mode dictionary.\n")
 
     mode_dict:dict = {} # instantiate mode dictionary
     modes_added:int = 0 # instantiate mode tracker
@@ -233,11 +233,11 @@ def generate_mode_dict(mode_list:list, mode_config_file:str) -> dict:
 
     validate_mode_count(mode_list, mode_dict, mode_config_file)
 
-    logging.info("Mode dicitionary successfully created") # log dictionary
+    logging.info("Mode dicitionary successfully created\n") # log dictionary
     for mode in mode_dict:
         logging.info("\t{}:".format(mode))
         for component in mode_dict[mode]:
-            logging.info("\t\t{}: {}".format(component, mode_dict[mode][component]))
+            logging.info("\t\t{}: {}\n".format(component, mode_dict[mode][component]))
 
     return mode_dict
 
@@ -301,7 +301,7 @@ def generate_annotation_dict(annotation_files_list:list, mode_list:list=None) ->
 
     # process each annotation file
     for i, annotation_file in enumerate(annotation_files_list):
-        logging.info("Processing annotation file: {}".format(annotation_file))
+        logging.info("Processing annotation file: {}\n".format(annotation_file))
         
         mode_in_annot_file:bool = False # default is for mode to specified at command line
         lines_processed:int = 0 # instantiate line tracker
@@ -448,6 +448,8 @@ def generate_expected_index_dict(mode_dict:dict, hamming_distance:int) -> dict:
         possible indexes as keys and true indexes as values.
     """
 
+    logging.info("Generating dictionary of expected indexes.\n")
+
     # instantiate dicts
     expected_index_dict:dict = {} # dictionary mapping hamming distance indexes to true indexes
 
@@ -458,35 +460,37 @@ def generate_expected_index_dict(mode_dict:dict, hamming_distance:int) -> dict:
             with open(mode_dict[mode]['index_file_paths'][index], "r") as f:
                 expected_index_dict[mode][index] = {line.split('\t')[-1]:line.split('\t')[-1] for line in f.read().split('\n') if line}
     
-    # generate hamming distance possibilities
-    ignore_hamming_distance_priority:bool = True # TODO: option to prioritize smaller hamming distance in collision
-    if hamming_distance > 0:
-        for index in expected_index_dict[mode]:
-            expected_sequences = list(expected_index_dict[mode][index].keys())
-            encountered_sequences = set(expected_sequences)
-            # loop through hamming distance step wise
-            for instance_hamming_distance in range(1, hamming_distance + 1):
-                logging.info("Generating alternative {} sequences for hamming distance: {}".format(index, instance_hamming_distance))
-                hamming_distance_alternative_sequences_encountered:set = set() # tracks indexes of higher priority
-                # generate combinations for given hamming distance
-                for c in itertools.combinations(list(range(len(expected_sequences[0]))), instance_hamming_distance):
-                    for sequence in expected_sequences:
-                        alternative_sequence = list(sequence)
-                        for sequence_index in c:
-                            alternative_sequence[sequence_index] = '[ATGCN]'
-                        alternative_sequence = "".join(alternative_sequence)
-                        alternative_sequences = exrex.generate(alternative_sequence)
-                        for instance_alternative_sequence in alternative_sequences:
-                            if not instance_alternative_sequence in expected_index_dict[mode][index]:
-                                expected_index_dict[mode][index][instance_alternative_sequence] = sequence
-                                hamming_distance_alternative_sequences_encountered.add(instance_alternative_sequence) # tracks current hamming distance instances
-                            elif instance_alternative_sequence not in expected_sequences and ignore_hamming_distance_priority:
-                                expected_index_dict[mode][index][instance_alternative_sequence] = 'ambiguous'
-                            # if alternative sequence already in dictionary then hamming distance collision exists and should be marked as ambiguous
-                            elif instance_alternative_sequence in hamming_distance_alternative_sequences_encountered and not ignore_hamming_distance_priority: # avoids removing indexes of higher priority
-                                expected_index_dict[mode][index][instance_alternative_sequence] = 'ambiguous'
+        # generate hamming distance possibilities
+        ignore_hamming_distance_priority:bool = False # avoids overwriting higher priority (lower hamming distance) indexes
+        if hamming_distance > 0:
+            for index in expected_index_dict[mode]:
+                # generate list of true indexes for 
+                expected_sequences = list(expected_index_dict[mode][index].keys())
+                encountered_sequences = set(expected_sequences)
+                # loop through hamming distance step wise
+                for instance_hamming_distance in range(1, hamming_distance + 1):
+                    logging.info("Generating alternative {} sequences for hamming distance: {}\n".format(index, instance_hamming_distance))
+                    hamming_distance_alternative_sequences_encountered:set = set() # tracks indexes of higher priority
+                    # generate index combinations for given hamming distance
+                    for c in itertools.combinations(list(range(len(expected_sequences[0]))), instance_hamming_distance):
+                        # convert index combinations to sequence combinations
+                        for sequence in expected_sequences:
+                            alternative_sequence = list(sequence)
+                            for sequence_index in c:
+                                alternative_sequence[sequence_index] = '[ATGCN]'
+                            alternative_sequence = "".join(alternative_sequence)
+                            alternative_sequences = exrex.generate(alternative_sequence)
+                            # add appropriate alternative sequences to expected sequences dict
+                            for instance_alternative_sequence in alternative_sequences:
+                                if not instance_alternative_sequence in expected_index_dict[mode][index]:
+                                    expected_index_dict[mode][index][instance_alternative_sequence] = sequence
+                                    hamming_distance_alternative_sequences_encountered.add(instance_alternative_sequence) # tracks current hamming distance instances
+                                elif instance_alternative_sequence not in expected_sequences and ignore_hamming_distance_priority: # avoids marking true index as ambiguous
+                                    expected_index_dict[mode][index][instance_alternative_sequence] = 'ambiguous'
+                                elif instance_alternative_sequence in hamming_distance_alternative_sequences_encountered and not ignore_hamming_distance_priority: # avoids removing indexes of higher priority
+                                    expected_index_dict[mode][index][instance_alternative_sequence] = 'ambiguous'
                         # add hamming distance indexes to indexes list of higher priority
-                    encountered_sequences.update(hamming_distance_alternative_sequences_encountered)
+                        encountered_sequences.update(hamming_distance_alternative_sequences_encountered)
     return expected_index_dict
 
 
@@ -796,13 +800,13 @@ def parse_fastq_input(
 
             mode_count += 1 # increment mode count
 
-            # TODO: make more dynamic (ie index4)
+            # TODO: make more dynamic (ie index4) - can just make this a dictionary instead of individual objects
             # extract each index len and seq
             index1_len:int = mode_dict[mode]['index1']['index1']
             index1_seq:str = index1_read[1].strip()[:index1_len]
             index2_len:int = mode_dict[mode]['index2']['index2']
             index2_seq:str = index2_read[1].strip()[:index2_len]
-            index3_len:int = mode_dict[mode]['read2']['index3'] # TODO: may need to make storage of index3 more dynamice
+            index3_len:int = mode_dict[mode]['read2']['index3'] # TODO: may need to make storage of index3 more dynamic
             index3_seq:str = read2_read[1][:index3_len]
 
             # TODO: make more dynamic (ie index4) - can just create a function that returns corrected sequence or None for each index in mode
@@ -812,9 +816,9 @@ def parse_fastq_input(
             true_index3_seq:str = expected_index_dict[mode]['index3'][index3_seq] if index3_seq in expected_index_dict[mode]['index3'] else None
 
             # hamming distance collision
-            if true_index1_seq == 'ambiguous' or true_index2_seq == 'ambiguous' or true_index3_seq == 'ambiguous':
+            if true_index1_seq == 'ambiguous' or true_index2_seq == 'ambiguous' or true_index3_seq == 'ambiguous' and true_index1_seq is not None and true_index2_seq is not None and true_index3_seq is not None:
                 ambiguous_index_encountered = True
-            # write to output if indexes match or are within hamming distance
+            # write to output if indexes match or are within hamming distance and no hamming distance collision
             elif true_index1_seq is not None and true_index2_seq is not None and true_index3_seq is not None:
                 # increment corrected barcodes if at least one index was corrected
                 # TODO: tracking the number of corrected barcodes is non-functional with new hash table index metho
@@ -853,7 +857,7 @@ def parse_fastq_input(
         
         # update statment
         if total_reads % 1000000 == 0:
-            logging.info("{} reads processed".format(total_reads))
+            logging.info("{} reads processed\n".format(total_reads))
 
     # close input files
     for open_input_file in open_input_files:
@@ -910,7 +914,7 @@ def main():
 
     # modes processing
     if args.mode_list is None:
-        sys.exit("ERROR: Modes list must be specified with one or more modes!")
+        sys.exit("\nERROR: Modes list must be specified with one or more modes!\n")
     mode_list:list = parse_comma_separated_inputs(
         comma_separated_input_string = args.mode_list
     )
