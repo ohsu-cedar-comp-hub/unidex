@@ -208,7 +208,7 @@ def generate_mode_dict(mode_list:list, mode_config_file:str) -> dict:
         Dictionary containing the characterisits of each specified mode.
     """
 
-    logging.info("Generating mode dictionary.\n")
+    logging.info("Generating mode dictionary.")
 
     mode_dict:dict = {} # instantiate mode dictionary
     modes_added:int = 0 # instantiate mode tracker
@@ -233,11 +233,11 @@ def generate_mode_dict(mode_list:list, mode_config_file:str) -> dict:
 
     validate_mode_count(mode_list, mode_dict, mode_config_file)
 
-    logging.info("Mode dicitionary successfully created\n") # log dictionary
+    logging.info("Mode dicitionary successfully created") # log dictionary
     for mode in mode_dict:
         logging.info("\t{}:".format(mode))
         for component in mode_dict[mode]:
-            logging.info("\t\t{}: {}\n".format(component, mode_dict[mode][component]))
+            logging.info("\t\t{}: {}".format(component, mode_dict[mode][component]))
 
     return mode_dict
 
@@ -301,7 +301,7 @@ def generate_annotation_dict(annotation_files_list:list, mode_list:list=None) ->
 
     # process each annotation file
     for i, annotation_file in enumerate(annotation_files_list):
-        logging.info("Processing annotation file: {}\n".format(annotation_file))
+        logging.info("Processing annotation file: {}".format(annotation_file))
         
         mode_in_annot_file:bool = False # default is for mode to specified at command line
         lines_processed:int = 0 # instantiate line tracker
@@ -448,7 +448,7 @@ def generate_expected_index_dict(mode_dict:dict, hamming_distance:int) -> dict:
         possible indexes as keys and true indexes as values.
     """
 
-    logging.info("Generating dictionary of expected indexes.\n")
+    logging.info("Generating dictionary of expected indexes.")
 
     # instantiate dicts
     expected_index_dict:dict = {} # dictionary mapping hamming distance indexes to true indexes
@@ -469,7 +469,7 @@ def generate_expected_index_dict(mode_dict:dict, hamming_distance:int) -> dict:
                 encountered_sequences = set(expected_sequences)
                 # loop through hamming distance step wise
                 for instance_hamming_distance in range(1, hamming_distance + 1):
-                    logging.info("Generating alternative {} sequences for hamming distance: {}\n".format(index, instance_hamming_distance))
+                    logging.info("Generating alternative {} sequences for hamming distance: {}".format(index, instance_hamming_distance))
                     hamming_distance_alternative_sequences_encountered:set = set() # tracks indexes of higher priority
                     # generate index combinations for given hamming distance
                     for c in itertools.combinations(list(range(len(expected_sequences[0]))), instance_hamming_distance):
@@ -528,6 +528,7 @@ def generate_output_file_name(
     # define experiment specific output folder
     # TODO: maybe move this to dictionary creation function or to main()
     experiment_output_folder = os.path.join(os.path.abspath(output_folder), experiment_name)
+    print(experiment_output_folder)
     if not os.path.exists(experiment_output_folder):
         os.mkdir(experiment_output_folder)
     # generate file name
@@ -571,25 +572,25 @@ def generate_output_file_dict(
     failing_output_file_dict:dict = {
         'R1_fail': open(generate_output_file_name(
             output_folder = output_folder,
-            experiment_name = os.path.dirname(experiment_name),
+            experiment_name = experiment_name,
             mode = None,
             index_read_num = 'R1',
             fail = True), "w"),
         'R2_fail': open(generate_output_file_name(
             output_folder = output_folder,
-            experiment_name = os.path.dirname(experiment_name),
+            experiment_name = experiment_name,
             mode = None,
             index_read_num = 'R2',
             fail = True), "w"),
         'I1_fail': open(generate_output_file_name(
             output_folder = output_folder, 
-            experiment_name = os.path.dirname(experiment_name),
+            experiment_name = experiment_name,
             mode = None,
             index_read_num = 'I1',
             fail = True), "w"),
         'I2_fail': open(generate_output_file_name(
             output_folder = output_folder,
-            experiment_name = os.path.dirname(experiment_name),
+            experiment_name = experiment_name,
             mode = None,
             index_read_num = 'I2',
             fail = True), "w")
@@ -606,12 +607,12 @@ def generate_output_file_dict(
                 # TODO: address single-end sequencing situations - need to be more dynamic here
                 'R1_pass': open(generate_output_file_name(
                     output_folder = output_folder,
-                    experiment_name = os.path.dirname(experiment_name),
+                    experiment_name = experiment_name,
                     mode = mode,
                     index_read_num = 'R1'), "w"),
                 'R2_pass': open(generate_output_file_name(
                     output_folder = output_folder,
-                    experiment_name = os.path.dirname(experiment_name),
+                    experiment_name = experiment_name,
                     mode = mode,
                     index_read_num = 'R2'), "w")
             }
@@ -623,13 +624,13 @@ def generate_output_file_dict(
                 passing_output_file_dict[mode][annotation_subject] = {
                     'R1_pass': open(generate_output_file_name(
                         output_folder = output_folder,
-                        experiment_name = os.path.dirname(experiment_name),
+                        experiment_name = experiment_name,
                         mode = mode,
                         index_read_num = 'R1',
                         annotation_subject = annotation_subject), 'w'),
                     'R2_pass': open(generate_output_file_name(
                         output_folder = output_folder,
-                        experiment_name = os.path.dirname(experiment_name),
+                        experiment_name = experiment_name,
                         mode = mode,
                         index_read_num = 'R2',
                         annotation_subject = annotation_subject), 'w')
@@ -857,7 +858,7 @@ def parse_fastq_input(
         
         # update statment
         if total_reads % 1000000 == 0:
-            logging.info("{} reads processed\n".format(total_reads))
+            logging.info("{} reads processed".format(total_reads))
 
     # close input files
     for open_input_file in open_input_files:
@@ -948,7 +949,7 @@ def main():
     # generate and open output file objects
     passing_output_file_dict, failing_output_file_dict = generate_output_file_dict(
         mode_dict = mode_dict,
-        experiment_name = args.run_folder,
+        experiment_name = os.path.basename(args.run_folder),
         output_folder = args.output_folder,
         annotation_subjects_dict = annotation_subjects_dict if args.annotation_files is not None else None
     )
