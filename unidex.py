@@ -800,6 +800,7 @@ def parse_fastq_input(
 
         mode_count:int = 0 # isntantiate mode count tracker - used to determine if all modes checked and should write reads to fail
         ambiguous_index_encountered:bool = False # tracks if ambiguous read found due to hamming distance collision
+        unspecified_annotation:bool = False # tracks if unspecified annotation encountered
         
         for mode in mode_dict:
 
@@ -888,7 +889,8 @@ def output_summary(
     corrected_barcodes:int,
     ambiguous_barcodes:int,
     unspecified_barcodes:int,
-    output_folder:str
+    output_folder:str,
+    experiment_name:str
 ) -> None:
     """
     Outputs summary stats to console.
@@ -909,6 +911,8 @@ def output_summary(
         Total barcodes thrown out due to unspecified annotation.
     output_folder : str
         Folder to output summary file to.
+    experiment_name : str
+        Run name.
     """
     logging.info("Total reads processed: {}".format(total_reads))
     logging.info("Total passing reads: {}".format(passed_reads))
@@ -920,15 +924,15 @@ def output_summary(
     # define output summary file
     timestr = time.strftime("%Y%m%d-%H%M%S")
     output_filename = ".".join(["summary-output", timestr, "txt"])
-    output_filepath = os.path.join(os.path.abspath(output_folder, output_filename))
+    output_filepath = os.path.join(os.path.abspath(output_folder), experiment_name, output_filename)
     
     with open(output_filepath, 'w') as f:
-        f.write("Total reads processed: {}".format(total_reads))
-        f.write("Total passing reads: {}".format(passed_reads))
-        f.write("Total failed reads: {}".format(failed_reads))
-        f.write("Total corrected barcodes: {}".format(corrected_barcodes))
-        f.write("Total barcodes thrown out due to hamming distance collision: {}".format(ambiguous_barcodes))
-        f.write("Total barcodes thrown out due to unspecified annotation: {}".format(unspecified_barcodes))
+        f.write("Total reads processed: {}\n".format(total_reads))
+        f.write("Total passing reads: {}\n".format(passed_reads))
+        f.write("Total failed reads: {}\n".format(failed_reads))
+        f.write("Total corrected barcodes: {}\n".format(corrected_barcodes))
+        f.write("Total barcodes thrown out due to hamming distance collision: {}\n".format(ambiguous_barcodes))
+        f.write("Total barcodes thrown out due to unspecified annotation: {}\n".format(unspecified_barcodes))
     return None
 
 
@@ -1020,7 +1024,8 @@ def main():
         corrected_barcodes,
         ambiguous_barcodes,
         unspecified_barcodes,
-        args.output_folder
+        args.output_folder,
+        experiment_name
     )
 
 
