@@ -357,7 +357,7 @@ def execute_delayed_mode():
     sys.exit("Delayed mode not currently implemented.")
 
 
-def define_input_files(args) -> tuple:
+def define_input_files(args) -> tuple[str, str, str, str]:
     """
     Defines read and index files. 
 
@@ -800,6 +800,7 @@ def parse_fastq_input(
         for mode in mode_dict:
 
             mode_count += 1 # increment mode count
+            unspecified_annotation:bool = False # used to catch barcodes not specified in annotation
 
             # TODO: make more dynamic (ie index4) - can just make this a dictionary instead of individual objects
             # extract each index len and seq
@@ -834,15 +835,21 @@ def parse_fastq_input(
                 if annotation_dict is not None:
                     # TODO: this should probbly be a function - will need to be more dynamic
                     read_barcode = "".join([true_index1_seq, true_index2_seq, true_index3_seq])
-                    annotation_subject = annotation_dict[mode][read_barcode]
-                    passing_output_file_dict[mode][annotation_subject]['R1_pass'].write("".join(read1_read))
-                    passing_output_file_dict[mode][annotation_subject]['R2_pass'].write("".join(read2_read))
+                    # asses if barcode specified in annotation by user
+                    if read_barcode in annotation_dict[mode]:
+                        annotation_subject = annotation_dict[mode][read_barcode]                        
+                    else:
+                        logging.info("Expected barcode found from sequence but annotation not specificed.")
+                        unspecified_annotation = True
+                    if not unspecified_annotation:
+                        passing_output_file_dict[mode][annotation_subject]['R1_pass'].write("".join(read1_read))
+                        passing_output_file_dict[mode][annotation_subject]['R2_pass'].write("".join(read2_read))
                 else:
                     passing_output_file_dict[mode]['R1_pass'].write("".join(read1_read))
                     passing_output_file_dict[mode]['R2_pass'].write("".join(read2_read))
-                
-                passed_reads += 1 # count the passed read
-                break # break out of mode_dict loop
+                if not unspecified_annotation:
+                    passed_reads += 1 # count the passed read
+                    break # break out of mode_dict loop
 
             # if all modes checked and no pass then write to fail
             if mode_count == len(mode_dict):
