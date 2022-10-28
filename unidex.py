@@ -13,6 +13,7 @@ import gzip
 import exrex
 import itertools
 import time
+from operator import itemgetter
 
 
 def parse_args():
@@ -221,7 +222,7 @@ def generate_mode_dict(mode_list:list, mode_config_file:str) -> dict:
         line = open_mode_config_file.readline()
         if not line: # break at end of file
             break
-        if line.startswith("#"): # skip header / description lines
+        if line.startswith("#") or not line[0]: # skip header / description lines
             continue
         mode_components = line.strip().split() # parse mode components / characteristics
         
@@ -262,20 +263,70 @@ def add_mode_to_dict(mode_components:list, mode_dict:dict) -> dict:
     mode_dict : dict
         Returns the mode dictionary with the new mode addition
     """
-  
-    # extract components of mode
-    mode, read1, index1, index2, read2, index_files = mode_components[0], mode_components[1], mode_components[2], mode_components[3], mode_components[4], mode_components[5:]
+
+    
+    ################ DEPRECATED BUT SAVING FOR NOW ##################
+    # # extract components of mode
+    # mode, read1, index1, index2, read2, index_files = mode_components[0], mode_components[1], mode_components[2], mode_components[3], mode_components[4], mode_components[5:]
+    ################ DEPRECATED BUT SAVING FOR NOW ##################
+
+
 
     # instantiate mode and compoenents within mode dictionary
-    mode_dict[mode] = {}
-    mode_dict[mode]['read1'] = {part.split(":")[0]: int(part.split(":")[1]) for part in read1.split(",")}
-    mode_dict[mode]['index1'] = {part.split(":")[0]: int(part.split(":")[1]) for part in index1.split(",")}
-    mode_dict[mode]['index2'] = {part.split(":")[0]: int(part.split(":")[1]) for part in index2.split(",")}
-    mode_dict[mode]['read2'] = {part.split(":")[0]: int(part.split(":")[1]) for part in read2.split(",")}
+    mode = mode_components.pop(0)
+    mode_dict[mode] = {} # add mode
+    while '=' not in mode_components[0]:
+        designation = mode_components.pop(0)
+        split_designation = designation.split(',')
+        components_encountered_in_designation:list = []
+        # track start and end position
+        start_pos:int = 0
+        for component in split_designation:
+            component_id, component_len = component.split(':')
+            component_len = int(component_len)
+            if component_id in mode_dict[mode]:
+                sys.exit("\nERROR: {} is specified in multiple locations in mode file!!!\n")
+            if component_id != 'null':
+                print(designation)
+                mode_dict[mode][component_id] = {
+                    'is_index': True if 'index' in component_id else False,
+                    'index_in_read': True if 'index' in designation and 'read' in designation else False,
+                    'start_pos': start_pos,
+                    'end_pos': start_pos + component_len,
+                    'needs_trimmed': True if 'null' in designation and 'read' in component_id or 'index' in designation and 'read' in component_id else False,
+                    'trim_len': 0,
+                    'location': 'read1' if 'read1' in designation else 'read2' if 'read2' in designation else component_id # this will be 'index1', 'index2', 'read1', or 'read2' to be referenced in parse
+                }
+                components_encountered_in_designation.append(component_id)
+            # increment start position
+            start_pos += component_len
+        # have to go back at end and update trim length for reads - which is euqual to the up to date start position
+        # TODO: this may not be the case if there are also indexes at the end of the read or in middle of read
+        # TODO: could loop back through the components and extract the lengths to get this right in the future
+        for component_id in components_encountered_in_designation:
+            if 'read' in component_id:
+                mode_dict[mode][component_id]['trim_len'] = start_pos
+
+
+
+    ########## DEPRECATED BUT SAVING FOR NOW ##################        
+    # mode_dict[mode] = {}
+    # mode_dict[mode]['read1'] = {part.split(":")[0]: int(part.split(":")[1]) for part in read1.split(",")}
+    # mode_dict[mode]['index1'] = {part.split(":")[0]: int(part.split(":")[1]) for part in index1.split(",")}
+    # mode_dict[mode]['index2'] = {part.split(":")[0]: int(part.split(":")[1]) for part in index2.split(",")}
+    # mode_dict[mode]['read2'] = {part.split(":")[0]: int(part.split(":")[1]) for part in read2.split(",")}
+    ########## DEPRECATED BUT SAVING FOR NOW ################## 
+
+
 
     # add index file paths to dictionary - ignoring special flags
-    mode_dict[mode]['index_file_paths'] = {part.split("=")[0]: part.split("=")[1] for part in index_files if not re.search('index[0-9]_', part.split("=")[0])}
-
+    mode_dict[mode]['index_file_paths'] = {}
+    while mode_components:
+        index_path_component:str = mode_components.pop(0)
+        index_id, index_path = index_path_component.split('=')
+        mode_dict[mode]['index_file_paths'][index_id] = index_path
+    print(mode_dict)
+    
     return mode_dict
 
 
@@ -684,7 +735,7 @@ def consume_next_read(open_input_file:str) -> list:
     return read_fastq_components
 
 
-def prepend_barcode_to_qname(read:list, index1:str, index2:str, index3:str) -> list:
+def prepend_barcode_to_qname(read:list, true_index_seqs:list) -> list:
     """
     Appends barcode to reads containing valid indexes.
 
@@ -692,12 +743,8 @@ def prepend_barcode_to_qname(read:list, index1:str, index2:str, index3:str) -> l
     -----------
     read : list
         List containing four components of read from fastq file.
-    index1 : str
-        The expected i7 index (already corrected if necessary).
-    index2 : str
-        The expected i5 index (already corrected if necessary).
-    index3 : str
-        The expected Tn5 index (already corrected if necessary).
+    true_index_seqs : list
+        List containing all true indexes.
 
     Returns:
     --------
@@ -711,7 +758,7 @@ def prepend_barcode_to_qname(read:list, index1:str, index2:str, index3:str) -> l
     """
     # TODO: see if we need to address rev comp i7 in barcode creation
     # generate barcode
-    barcode:str = "".join([index1, index2, index3])
+    barcode:str = "".join(true_index_seqs)
     # prepend to qname
     read[0] = "".join(["@", barcode, ":", read[0][1:]])
     return read
@@ -787,14 +834,28 @@ def parse_fastq_input(
     unspecified_barcodes:int = 0 # tracks reads thrown out due to unspecified annotation
 
     # open all input files
-    open_input_files:list = [gzip.open(input_file, "rt") for input_file in input_files]
-    
+    open_input_files:dict = {}
+    for input_file in input_files:
+        if '_R1_' in input_file:
+            open_input_files['read1'] = gzip.open(input_file, "rt")
+        elif '_R2_' in input_file:
+            open_input_files['read2'] = gzip.open(input_file, "rt")
+        elif '_I1_' in input_file:
+            open_input_files['index1'] = gzip.open(input_file, "rt")
+        elif '_I2_' in input_file:
+            open_input_files['index2'] = gzip.open(input_file, "rt")
+        else:
+            continue
+        logging.info("Opening input file: {}".format(input_file))
+        
     # process input files
     while True:
         # TODO: account for single-end instances
         # consume next read
-        read1_read, read2_read, index1_read, index2_read = [consume_next_read(open_input_file) for open_input_file in open_input_files]
-        if not read1_read[0]: # break at end of files
+        reads:dict = {}
+        for read in open_input_files:
+            reads[read] = consume_next_read(open_input_files[read])
+        if not reads['read1'][0]: # break at end of files
             break
         total_reads += 1 # increment total reads
 
@@ -808,60 +869,89 @@ def parse_fastq_input(
 
             # TODO: make more dynamic (ie index4) - can just make this a dictionary instead of individual objects
             # extract each index len and seq
-            index1_len:int = mode_dict[mode]['index1']['index1']
-            index1_seq:str = index1_read[1].strip()[:index1_len]
-            index2_len:int = mode_dict[mode]['index2']['index2']
-            index2_seq:str = index2_read[1].strip()[:index2_len]
-            index3_len:int = mode_dict[mode]['read2']['index3'] # TODO: may need to make storage of index3 more dynamic
-            index3_seq:str = read2_read[1][:index3_len]
 
-            # TODO: make more dynamic (ie index4) - can just create a function that returns corrected sequence or None for each index in mode
-            # check for matching indexes
-            true_index1_seq:str = expected_index_dict[mode]['index1'][index1_seq] if index1_seq in expected_index_dict[mode]['index1'] else None
-            true_index2_seq:str = expected_index_dict[mode]['index2'][index2_seq] if index2_seq in expected_index_dict[mode]['index2'] else None
-            true_index3_seq:str = expected_index_dict[mode]['index3'][index3_seq] if index3_seq in expected_index_dict[mode]['index3'] else None
+            observed_index_seqs:list = []
+            true_index_seqs:list = []
+            
+            for designation in mode_dict[mode]:
+                if designation != 'index_file_paths': # TODO: come back and adjust where this is stored
+                    if 'index' in designation:
+                        # identify location of index sequence
+                        location = mode_dict[mode][designation]['location']
+                        start_pos = mode_dict[mode][designation]['start_pos']
+                        end_pos = mode_dict[mode][designation]['end_pos']
+                        # extract index sequence of interest from read
+                        read_sequence = reads[location][1]
+                        index_sequence = read_sequence[start_pos:end_pos]
+                        observed_index_seqs.append(index_sequence)
+                        # determine true index sequence
+                        if index_sequence in expected_index_dict[mode][designation]:
+                            true_index_seqs.append(expected_index_dict[mode][designation][index_sequence])
+                        else:
+                            true_index_seqs.append(None)
 
-            # hamming distance collision
-            if true_index1_seq == 'ambiguous' or true_index2_seq == 'ambiguous' or true_index3_seq == 'ambiguous' and true_index1_seq is not None and true_index2_seq is not None and true_index3_seq is not None:
-                ambiguous_index_encountered = True
-            # write to output if indexes match or are within hamming distance and no hamming distance collision
-            elif true_index1_seq is not None and true_index2_seq is not None and true_index3_seq is not None:
-                # increment corrected barcodes if at least one index was corrected
-                # TODO: tracking the number of corrected barcodes is non-functional with new hash table index metho
-                if true_index1_seq != index1_seq or true_index2_seq != index2_seq or true_index3_seq != index3_seq:
-                    corrected_barcodes += 1 # increment corrected barcodes since all the way through corrections
-                # prepend barcode to qname of each read
-                read1_read, read2_read = [prepend_barcode_to_qname(read, true_index1_seq, true_index2_seq, true_index3_seq) for read in (read1_read, read2_read)]
-                # slice reads if necessary
-                if sum([mode_dict[mode]['read2'][key] for key in mode_dict[mode]['read2']]) > 0:
-                    read2_read = slice_read(read2_read, sum([mode_dict[mode]['read2'][key] for key in mode_dict[mode]['read2']]))
-                # write reads to passing output files
-                if annotation_dict is not None:
-                    # TODO: this should probbly be a function - will need to be more dynamic
-                    read_barcode = "".join([true_index1_seq, true_index2_seq, true_index3_seq])
-                    # asses if barcode specified in annotation by user
-                    if read_barcode in annotation_dict[mode]:
-                        annotation_subject = annotation_dict[mode][read_barcode]
-                        unspecified_annotation:bool = False # used to catch barcodes not specified in annotation                        
-                    else:
-                        logging.info("Expected barcode found from sequence but annotation not specificed.")
-                        unspecified_annotation = True # used to catch barcodes not specified in annotation 
-                    if not unspecified_annotation:
-                        passing_output_file_dict[mode][annotation_subject]['R1_pass'].write("".join(read1_read))
-                        passing_output_file_dict[mode][annotation_subject]['R2_pass'].write("".join(read2_read))
+
+
+            ################ DEPRECATED BUT SAVING FOR NOW ########################                        
+            # index1_len:int = mode_dict[mode]['index1']['index1']
+            # index1_seq:str = reads['index1'][1].strip()[:index1_len]
+            # index2_len:int = mode_dict[mode]['index2']['index2']
+            # index2_seq:str = reads['index2'][1].strip()[:index2_len]
+            # index3_len:int = mode_dict[mode]['read2']['index3'] # TODO: may need to make storage of index3 more dynamic
+            # index3_seq:str = reads['read2'][1][:index3_len]                     
+            
+            # # TODO: make more dynamic (ie index4) - can just create a function that returns corrected sequence or None for each index in mode
+            # # check for matching indexes
+            # true_index1_seq:str = expected_index_dict[mode]['index1'][index1_seq] if index1_seq in expected_index_dict[mode]['index1'] else None
+            # true_index2_seq:str = expected_index_dict[mode]['index2'][index2_seq] if index2_seq in expected_index_dict[mode]['index2'] else None
+            # true_index3_seq:str = expected_index_dict[mode]['index3'][index3_seq] if index3_seq in expected_index_dict[mode]['index3'] else None
+            ################ DEPRECATED BUT SAVING FOR NOW ########################   
+
+
+
+            # if all legitimate indexes
+            if None not in true_index_seqs:
+                # hamming distance collision
+                if 'ambiguous' in true_index_seqs:
+                    ambiguous_index_encountered = True
+                # write to output if indexes match or are within hamming distance and no hamming distance collision
                 else:
-                    passing_output_file_dict[mode]['R1_pass'].write("".join(read1_read))
-                    passing_output_file_dict[mode]['R2_pass'].write("".join(read2_read))
-                if not unspecified_annotation:
-                    passed_reads += 1 # count the passed read
-                    break # break out of mode_dict loop
+                    # increment corrected barcodes if at least one index was corrected
+                    if observed_index_seqs != true_index_seqs:
+                        corrected_barcodes += 1 # increment corrected barcodes since all the way through corrections
+                    # prepend barcode to qname of each read
+                    read1_read, read2_read = [prepend_barcode_to_qname(read, true_index_seqs) for read in itemgetter('read1', 'read2')(reads)]
+                    # slice reads if necessary
+                    for designation in mode_dict[mode]:
+                        if 'read' in designation:
+                            reads[designation] = slice_read(reads[designation], mode_dict[mode][designation]['trim_len'])
+                    # write reads to passing output files
+                    if annotation_dict is not None:
+                        # TODO: this should probbly be a function - will need to be more dynamic
+                        read_barcode = "".join(true_index_seqs)
+                        # asses if barcode specified in annotation by user
+                        if read_barcode in annotation_dict[mode]:
+                            annotation_subject = annotation_dict[mode][read_barcode]
+                            unspecified_annotation:bool = False # used to catch barcodes not specified in annotation                        
+                        else:
+                            logging.info("Expected barcode found from sequence but annotation not specificed.")
+                            unspecified_annotation = True # used to catch barcodes not specified in annotation 
+                        if not unspecified_annotation:
+                            passing_output_file_dict[mode][annotation_subject]['R1_pass'].write("".join(reads['read1']))
+                            passing_output_file_dict[mode][annotation_subject]['R2_pass'].write("".join(reads['read2']))
+                    else:
+                        passing_output_file_dict[mode]['R1_pass'].write("".join(reads['read1']))
+                        passing_output_file_dict[mode]['R2_pass'].write("".join(reads['read2']))
+                    if not unspecified_annotation:
+                        passed_reads += 1 # count the passed read
+                        break # break out of mode_dict loop
 
             # if all modes checked and no pass then write to fail
             if mode_count == len(mode_dict):
-                failing_output_file_dict['R1_fail'].write("".join(read1_read))
-                failing_output_file_dict['R2_fail'].write("".join(read2_read))
-                failing_output_file_dict['I1_fail'].write("".join(index1_read))
-                failing_output_file_dict['I2_fail'].write("".join(index2_read))
+                failing_output_file_dict['R1_fail'].write("".join(reads['read1']))
+                failing_output_file_dict['R2_fail'].write("".join(reads['read2']))
+                failing_output_file_dict['I1_fail'].write("".join(reads['index1']))
+                failing_output_file_dict['I2_fail'].write("".join(reads['index2']))
                 failed_reads += 1 # count the failed read
                 
                 # count ambiguous barcode if hamming distance collision encountered
@@ -877,7 +967,7 @@ def parse_fastq_input(
 
     # close input files
     for open_input_file in open_input_files:
-        open_input_file.close()
+        open_input_files[open_input_file].close()
 
     return total_reads, passed_reads, failed_reads, corrected_barcodes, ambiguous_barcodes, unspecified_barcodes
 
