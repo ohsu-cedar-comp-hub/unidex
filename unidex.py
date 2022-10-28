@@ -12,6 +12,7 @@ import re
 import gzip
 import exrex
 import itertools
+import time
 
 
 def parse_args():
@@ -772,8 +773,10 @@ def parse_fastq_input(
         Total reads that passed and were output to passing files.
     failed_reads : int
         Total reads that failed and were output to failing files.
-    corrected_barcodes: int
+    corrected_barcodes : int
         Total barcodes that were succesfully corrected.
+    unspecified_barcodes : int
+        Total barcodes thrown out due to unspecified annotation.
     """
     # instantiate counters
     total_reads:int = 0
@@ -781,6 +784,7 @@ def parse_fastq_input(
     failed_reads:int = 0
     corrected_barcodes:int = 0
     ambiguous_barcodes:int = 0 # tracks reads thrown out due to hamming distance collision
+    unspecified_barcodes:int = 0 # tracks reads thrown out due to unspecified annotation
 
     # open all input files
     open_input_files:list = [gzip.open(input_file, "rt") for input_file in input_files]
@@ -800,7 +804,6 @@ def parse_fastq_input(
         for mode in mode_dict:
 
             mode_count += 1 # increment mode count
-            unspecified_annotation:bool = False # used to catch barcodes not specified in annotation
 
             # TODO: make more dynamic (ie index4) - can just make this a dictionary instead of individual objects
             # extract each index len and seq
@@ -837,10 +840,11 @@ def parse_fastq_input(
                     read_barcode = "".join([true_index1_seq, true_index2_seq, true_index3_seq])
                     # asses if barcode specified in annotation by user
                     if read_barcode in annotation_dict[mode]:
-                        annotation_subject = annotation_dict[mode][read_barcode]                        
+                        annotation_subject = annotation_dict[mode][read_barcode]
+                        unspecified_annotation:bool = False # used to catch barcodes not specified in annotation                        
                     else:
                         logging.info("Expected barcode found from sequence but annotation not specificed.")
-                        unspecified_annotation = True
+                        unspecified_annotation = True # used to catch barcodes not specified in annotation 
                     if not unspecified_annotation:
                         passing_output_file_dict[mode][annotation_subject]['R1_pass'].write("".join(read1_read))
                         passing_output_file_dict[mode][annotation_subject]['R2_pass'].write("".join(read2_read))
@@ -862,6 +866,9 @@ def parse_fastq_input(
                 # count ambiguous barcode if hamming distance collision encountered
                 if ambiguous_index_encountered:
                     ambiguous_barcodes += 1
+                # counts barcodes thrown out due to unspecified annotation
+                if unspecified_annotation:
+                    unspecified_barcodes += 1
         
         # update statment
         if total_reads % 1000000 == 0:
@@ -871,7 +878,7 @@ def parse_fastq_input(
     for open_input_file in open_input_files:
         open_input_file.close()
 
-    return total_reads, passed_reads, failed_reads, corrected_barcodes, ambiguous_barcodes
+    return total_reads, passed_reads, failed_reads, corrected_barcodes, ambiguous_barcodes, unspecified_barcodes
 
 
 def output_summary(
@@ -879,7 +886,9 @@ def output_summary(
     passed_reads:int,
     failed_reads:int,
     corrected_barcodes:int,
-    ambiguous_barcodes:int
+    ambiguous_barcodes:int,
+    unspecified_barcodes:int,
+    output_folder:str
 ) -> None:
     """
     Outputs summary stats to console.
@@ -896,12 +905,30 @@ def output_summary(
         Total barcodes that were succesfully corrected.
     ambiguous_barcodes : int
         Total barcodes thrown out due to hamming distance collision.
+    unspecified_barcodes : int
+        Total barcodes thrown out due to unspecified annotation.
+    output_folder : str
+        Folder to output summary file to.
     """
     logging.info("Total reads processed: {}".format(total_reads))
     logging.info("Total passing reads: {}".format(passed_reads))
     logging.info("Total failed reads: {}".format(failed_reads))
     logging.info("Total corrected barcodes: {}".format(corrected_barcodes))
     logging.info("Total barcodes thrown out due to hamming distance collision: {}".format(ambiguous_barcodes))
+    logging.info("Total barcodes thrown out due to unspecified annotation: {}".format(unspecified_barcodes))
+    
+    # define output summary file
+    timestr = time.strftime("%Y%m%d-%H%M%S")
+    output_filename = ".".join(["summary-output", timestr, "txt"])
+    output_filepath = os.path.join(os.path.abspath(output_folder, output_filename))
+    
+    with open(output_filepath, 'w') as f:
+        f.write("Total reads processed: {}".format(total_reads))
+        f.write("Total passing reads: {}".format(passed_reads))
+        f.write("Total failed reads: {}".format(failed_reads))
+        f.write("Total corrected barcodes: {}".format(corrected_barcodes))
+        f.write("Total barcodes thrown out due to hamming distance collision: {}".format(ambiguous_barcodes))
+        f.write("Total barcodes thrown out due to unspecified annotation: {}".format(unspecified_barcodes))
     return None
 
 
@@ -969,7 +996,7 @@ def main():
     )
     
     # parse fastq input
-    total_reads, passed_reads, failed_reads, corrected_barcodes, ambiguous_barcodes = parse_fastq_input(
+    total_reads, passed_reads, failed_reads, corrected_barcodes, ambiguous_barcodes, unspecified_barcodes = parse_fastq_input(
         input_files = input_files,
         mode_dict = mode_dict,
         expected_index_dict = expected_index_dict,
@@ -986,7 +1013,14 @@ def main():
     )
 
     # log results
-    output_summary(total_reads, passed_reads, failed_reads, corrected_barcodes, ambiguous_barcodes)
+    output_summary(
+        total_reads,
+        passed_reads,
+        failed_reads,
+        corrected_barcodes,
+        ambiguous_barcodes,
+        unspecified_barcodes
+    )
 
 
 # run prgram
