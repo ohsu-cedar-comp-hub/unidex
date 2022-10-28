@@ -1019,7 +1019,8 @@ def main():
         failed_reads,
         corrected_barcodes,
         ambiguous_barcodes,
-        unspecified_barcodes
+        unspecified_barcodes,
+        args.output_folder
     )
 
 
