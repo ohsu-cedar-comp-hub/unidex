@@ -1,6 +1,25 @@
 #!/usr/bin/env python
 
-# unidex initial python build
+"""
+Unidex
+
+Unidex is a universal demultiplexer that can be applied to a range of sequencing data types. The
+progam creates demultiplexed fastq files given gzipped fastq files, expected sequences, and 
+annotations as input. Unidex was originally generated in Perl by Dr. Andrew Adey at Oregon Health
+and Science University (OHSU). The tool has been translated into Python by James Adler at the Cancer
+Early Detection Advanced Research Center (CEDAR), a part of the Knight Cancer Research Institue
+at OHSU.
+"""
+
+__author__ = "James Adler"
+__copyright__ = ""
+__credits__ = ["James Adler", "Andrew Adey", "Andrew Nishida"]
+__license__ = ""
+__version__ = ""
+__maintainer__ = "James Adler"
+__email__ = "adlerj@ohsu.edu"
+__status__ = "Development"
+
 
 # import modules
 import argparse
