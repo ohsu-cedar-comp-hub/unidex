@@ -842,8 +842,14 @@ def parse_fastq_input(
         "failed_reads": 0,
         "corrected_barcodes": 0,
         "ambiguous_barcodes": 0, # tracks reads thrown out due to hamming distance collision
-        "unspecified_barcodes": 0 # tracks reads thrown out due to unspecified annotation
+        "unspecified_barcodes": 0, # tracks reads thrown out due to unspecified annotation
+        "modes": {mode:{'count': 0, 'annotations': {}} for mode in mode_dict}
     }
+    # add annotatios to summary dict as well
+    if annotation_dict is not None:
+        for mode in summary_output_dict['modes']:
+            for annotation_subject in annotation_dict[mode].values():
+                summary_output_dict['modes'][mode]['annotations'][annotation_subject] = {'count': 0}
     
     # open all input files
     open_input_files:dict = {}
@@ -934,6 +940,7 @@ def parse_fastq_input(
                                 passing_output_file_dict[mode][annotation_subject]['R1_pass'].write("".join(reads['read1']))
                             if 'R2_pass' in passing_output_file_dict[mode][annotation_subject]:
                                 passing_output_file_dict[mode][annotation_subject]['R2_pass'].write("".join(reads['read2']))
+                            summary_output_dict['modes'][mode]['annotations'][annotation_subject]['count'] += 1 # incrment annotation subject read count
                     else:
                         # TODO: could add more flexibility here if we want to but not sure if it's necessary
                         if 'R1_pass' in passing_output_file_dict[mode]:
@@ -942,6 +949,7 @@ def parse_fastq_input(
                             passing_output_file_dict[mode]['R2_pass'].write("".join(reads['read2']))
                     if not unspecified_annotation:
                         summary_output_dict['passing_reads'] += 1 # count the passed read
+                        summary_output_dict['modes'][mode]['count'] += 1 # increment the mode to which read assigned
                         break # break out of mode_dict loop
 
             # if all modes checked and no pass then write to fail
@@ -1012,25 +1020,42 @@ def output_summary(
     experiment_name : str
         Run name.
     """
+    logging.info("Overall processing statistics:")
     logging.info("Total reads processed: {}".format(summary_output_dict["total_reads"]))
-    logging.info("Total passing reads: {}".format(summary_output_dict["passing_reads"]))
-    logging.info("Total failed reads: {}".format(summary_output_dict["failed_reads"]))
-    logging.info("Total corrected barcodes: {}".format(summary_output_dict["corrected_barcodes"]))
-    logging.info("Total barcodes thrown out due to hamming distance collision: {}".format(summary_output_dict["ambiguous_barcodes"]))
-    logging.info("Total barcodes thrown out due to unspecified annotation: {}".format(summary_output_dict["unspecified_barcodes"]))
-    
+    logging.info("Total assigned reads: {} ({}%)".format(summary_output_dict["passing_reads"], round(summary_output_dict["passing_reads"] / summary_output_dict["total_reads"] * 100, 2)))
+    logging.info("Total failed reads: {} ({}%)".format(summary_output_dict["failed_reads"], round(summary_output_dict["passing_reads"] / summary_output_dict["total_reads"] * 100, 2)))
+    logging.info("Total corrected barcodes: {} ({}%)".format(summary_output_dict["corrected_barcodes"], round(summary_output_dict["corrected_barcodes"] / summary_output_dict["passing_reads"] * 100, 2)))
+    logging.info("Total barcodes thrown out due to hamming distance collision: {} ({}%)".format(summary_output_dict["ambiguous_barcodes"], round(summary_output_dict["ambiguous_barcodes"] / summary_output_dict["total_reads"] * 100, 2)))
+    logging.info("Total barcodes thrown out due to unspecified annotation: {} ({}%)\n".format(summary_output_dict["unspecified_barcodes"], round(summary_output_dict["unspecified_barcodes"] / summary_output_dict["total_reads"] * 100, 2)))
+
+    logging.info("By mode processing statistics:")
+    for mode in summary_output_dict['modes']:
+        logging.info("Total reads assigned to mode {}: {} ({}%)".format(mode, summary_output_dict['modes'][mode]['count'], round(summary_output_dict['modes'][mode]['count'] / summary_output_dict['total_reads'] * 100, 2)))
+        if summary_output_dict['modes'][mode]['count'] > 0:
+            for annotation_subject in summary_output_dict['modes'][mode]['annotations']:
+                logging.info("\tTotal reads assigned to annotation {}: {} ({}%)".format(annotation_subject, summary_output_dict['modes'][mode]['annotations'][annotation_subject]['count'], round(summary_output_dict['modes'][mode]['annotations'][annotation_subject]['count'] / summary_output_dict['modes'][mode]['count'] * 100, 2)))
+            
     # define output summary file
     timestr = time.strftime("%Y%m%d-%H%M%S")
     output_filename = ".".join(["summary-output", timestr, "txt"])
     output_filepath = os.path.join(os.path.abspath(output_folder), experiment_name, output_filename)
     
     with open(output_filepath, 'w') as f:
+        f.write("Overal processing statistics:\n")
         f.write("Total reads processed: {}\n".format(summary_output_dict["total_reads"]))
-        f.write("Total passing reads: {}\n".format(summary_output_dict["passing_reads"]))
-        f.write("Total failed reads: {}\n".format(summary_output_dict["failed_reads"]))
-        f.write("Total corrected barcodes: {}\n".format(summary_output_dict["corrected_barcodes"]))
-        f.write("Total barcodes thrown out due to hamming distance collision: {}\n".format(summary_output_dict["ambiguous_barcodes"]))
-        f.write("Total barcodes thrown out due to unspecified annotation: {}\n".format(summary_output_dict["unspecified_barcodes"]))
+        f.write("Total assigned reads: {} ({}%)\n".format(summary_output_dict["passing_reads"], round(summary_output_dict["passing_reads"] / summary_output_dict["total_reads"] * 100, 2)))
+        f.write("Total failed reads: {} ({}%)\n".format(summary_output_dict["failed_reads"], round(summary_output_dict["passing_reads"] / summary_output_dict["total_reads"] * 100, 2)))
+        f.write("Total corrected barcodes: {} ({}%)\n".format(summary_output_dict["corrected_barcodes"], round(summary_output_dict["corrected_barcodes"] / summary_output_dict["passing_reads"] * 100, 2)))
+        f.write("Total barcodes thrown out due to hamming distance collision: {} ({}%)\n".format(summary_output_dict["ambiguous_barcodes"], round(summary_output_dict["ambiguous_barcodes"] / summary_output_dict["total_reads"] * 100, 2)))
+        f.write("Total barcodes thrown out due to unspecified annotation: {} ({}%)\n".format(summary_output_dict["unspecified_barcodes"], round(summary_output_dict["unspecified_barcodes"] / summary_output_dict["total_reads"] * 100, 2)))
+    
+        f.write("\nBy mode processing statistics:\n")
+        for mode in summary_output_dict['modes']:
+            f.write("Total reads assigned to mode {}: {} ({}%)\n".format(mode, summary_output_dict['modes'][mode]['count'], round(summary_output_dict['modes'][mode]['count'] / summary_output_dict['total_reads'] * 100, 2)))
+            if summary_output_dict['modes'][mode]['count'] > 0:
+                for annotation_subject in summary_output_dict['modes'][mode]['annotations']:
+                    f.write("\tTotal reads assigned to annotation {}: {} ({}%)\n".format(annotation_subject, summary_output_dict['modes'][mode]['annotations'][annotation_subject]['count'], round(summary_output_dict['modes'][mode]['annotations'][annotation_subject]['count'] / summary_output_dict['modes'][mode]['count'] * 100, 2)))
+                
     return None
 
 
@@ -1115,6 +1140,7 @@ def main():
         annotation_file_used = True if args.annotation_files is not None else False
     )
 
+    print(summary_output_dict)
     # log results
     output_summary(
         summary_output_dict = summary_output_dict,
