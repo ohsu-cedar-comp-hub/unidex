@@ -797,7 +797,7 @@ def parse_fastq_input(
     passing_output_file_dict:dict,
     failing_output_file_dict:dict,
     annotation_dict:dict=None
-) -> tuple:
+) -> dict:
     """
     Processes fastqs, separating reads by mode, pass, and fail.
 
@@ -819,25 +819,32 @@ def parse_fastq_input(
 
     Returns:
     --------
-    total_reads : int
-        Total reads processed.
-    passed_reads : int
-        Total reads that passed and were output to passing files.
-    failed_reads : int
-        Total reads that failed and were output to failing files.
-    corrected_barcodes : int
-        Total barcodes that were succesfully corrected.
-    unspecified_barcodes : int
-        Total barcodes thrown out due to unspecified annotation.
+    summary_output_dict : dict
+        Dictionary containing counts of interest (ie reads by mode, annotation, fail, abmiguous, etc.)
+        
+            Components:
+            -----------
+            total_reads : int
+                Total reads processed.
+            passing_reads : int
+                Total reads that passed and were output to passing files.
+            failed_reads : int
+                Total reads that failed and were output to failing files.
+            corrected_barcodes : int
+                Total barcodes that were succesfully corrected.
+            unspecified_barcodes : int
+                Total barcodes thrown out due to unspecified annotation.
     """
     # instantiate counters
-    total_reads:int = 0
-    passed_reads:int = 0
-    failed_reads:int = 0
-    corrected_barcodes:int = 0
-    ambiguous_barcodes:int = 0 # tracks reads thrown out due to hamming distance collision
-    unspecified_barcodes:int = 0 # tracks reads thrown out due to unspecified annotation
-
+    summary_output_dict:dict = {
+        "total_reads": 0,
+        "passing_reads": 0,
+        "failed_reads": 0,
+        "corrected_barcodes": 0,
+        "ambiguous_barcodes": 0, # tracks reads thrown out due to hamming distance collision
+        "unspecified_barcodes": 0 # tracks reads thrown out due to unspecified annotation
+    }
+    
     # open all input files
     open_input_files:dict = {}
     for input_file in input_files:
@@ -862,7 +869,7 @@ def parse_fastq_input(
             reads[read] = consume_next_read(open_input_files[read])
         if not reads['read1'][0]: # break at end of files
             break
-        total_reads += 1 # increment total reads
+        summary_output_dict["total_reads"] += 1 # increment total reads
 
         mode_count:int = 0 # isntantiate mode count tracker - used to determine if all modes checked and should write reads to fail
         ambiguous_index_encountered:bool = False # tracks if ambiguous read found due to hamming distance collision
@@ -904,7 +911,7 @@ def parse_fastq_input(
                 else:
                     # increment corrected barcodes if at least one index was corrected
                     if observed_index_seqs != true_index_seqs:
-                        corrected_barcodes += 1 # increment corrected barcodes since all the way through corrections
+                        summary_output_dict['corrected_barcodes'] += 1 # increment corrected barcodes since all the way through corrections
                     # slice reads if necessary
                     for designation in mode_dict[mode]:
                         if 'read' in designation:
@@ -934,7 +941,7 @@ def parse_fastq_input(
                         if 'R2_pass' in passing_output_file_dict[mode]:
                             passing_output_file_dict[mode]['R2_pass'].write("".join(reads['read2']))
                     if not unspecified_annotation:
-                        passed_reads += 1 # count the passed read
+                        summary_output_dict['passing_reads'] += 1 # count the passed read
                         break # break out of mode_dict loop
 
             # if all modes checked and no pass then write to fail
@@ -948,33 +955,32 @@ def parse_fastq_input(
                     failing_output_file_dict['I1_fail'].write("".join(reads['index1']))
                 if 'I2_fail' in failing_output_file_dict:
                     failing_output_file_dict['I2_fail'].write("".join(reads['index2']))
-                failed_reads += 1 # count the failed read
+                summary_output_dict["failed_reads"] += 1 # count the failed read
                 
                 # count ambiguous barcode if hamming distance collision encountered
                 if ambiguous_index_encountered:
-                    ambiguous_barcodes += 1
+                    summary_output_dict["ambiguous_barcodes"] += 1
                 # counts barcodes thrown out due to unspecified annotation
                 if unspecified_annotation:
-                    unspecified_barcodes += 1
+                    summary_output_dict["unspecified_barcodes"] += 1
         
         # update statment
-        if total_reads % 1000000 == 0:
-            logging.info("{} reads processed".format(total_reads))
+        if summary_output_dict['total_reads'] % 1000000 == 0:
+            logging.info("{} reads processed".format(summary_output_dict['total_reads']))
 
     # close input files
     for open_input_file in open_input_files:
         open_input_files[open_input_file].close()
 
-    return total_reads, passed_reads, failed_reads, corrected_barcodes, ambiguous_barcodes, unspecified_barcodes
+    return summary_output_dict
+
+    ############# DEPRECATED BUT KEEPING TEMPORARILY #################
+    # return total_reads, passed_reads, failed_reads, corrected_barcodes, ambiguous_barcodes, unspecified_barcodes
+    ############# DEPRECATED BUT KEEPING TEMPORARILY #################
 
 
 def output_summary(
-    total_reads:int,
-    passed_reads:int,
-    failed_reads:int,
-    corrected_barcodes:int,
-    ambiguous_barcodes:int,
-    unspecified_barcodes:int,
+    summary_output_dict:dict,
     output_folder:str,
     experiment_name:str
 ) -> None:
@@ -983,29 +989,35 @@ def output_summary(
 
     Parameters:
     -----------
-    total_reads : int
-        Total reads processed.
-    passed_reads : int
-        Total reads that passed and were output to passing files.
-    failed_reads : int
-        Total reads that failed and were output to failing files.
-    corrected_barcodes: int
-        Total barcodes that were succesfully corrected.
-    ambiguous_barcodes : int
-        Total barcodes thrown out due to hamming distance collision.
-    unspecified_barcodes : int
-        Total barcodes thrown out due to unspecified annotation.
+    summary_output_dict : dict
+        Dictionary containing counts of all instances of interes (ie total reads, failed reads, ambiguous reads, etc.)
+        
+        Components:
+        -----------
+        total_reads : int
+            Total reads processed.
+        passing_reads : int
+            Total reads that passed and were output to passing files.
+        failed_reads : int
+            Total reads that failed and were output to failing files.
+        corrected_barcodes: int
+            Total barcodes that were succesfully corrected.
+        ambiguous_barcodes : int
+            Total barcodes thrown out due to hamming distance collision.
+        unspecified_barcodes : int
+            Total barcodes thrown out due to unspecified annotation.
+    
     output_folder : str
         Folder to output summary file to.
     experiment_name : str
         Run name.
     """
-    logging.info("Total reads processed: {}".format(total_reads))
-    logging.info("Total passing reads: {}".format(passed_reads))
-    logging.info("Total failed reads: {}".format(failed_reads))
-    logging.info("Total corrected barcodes: {}".format(corrected_barcodes))
-    logging.info("Total barcodes thrown out due to hamming distance collision: {}".format(ambiguous_barcodes))
-    logging.info("Total barcodes thrown out due to unspecified annotation: {}".format(unspecified_barcodes))
+    logging.info("Total reads processed: {}".format(summary_output_dict["total_reads"]))
+    logging.info("Total passing reads: {}".format(summary_output_dict["passing_reads"]))
+    logging.info("Total failed reads: {}".format(summary_output_dict["failed_reads"]))
+    logging.info("Total corrected barcodes: {}".format(summary_output_dict["corrected_barcodes"]))
+    logging.info("Total barcodes thrown out due to hamming distance collision: {}".format(summary_output_dict["ambiguous_barcodes"]))
+    logging.info("Total barcodes thrown out due to unspecified annotation: {}".format(summary_output_dict["unspecified_barcodes"]))
     
     # define output summary file
     timestr = time.strftime("%Y%m%d-%H%M%S")
@@ -1013,12 +1025,12 @@ def output_summary(
     output_filepath = os.path.join(os.path.abspath(output_folder), experiment_name, output_filename)
     
     with open(output_filepath, 'w') as f:
-        f.write("Total reads processed: {}\n".format(total_reads))
-        f.write("Total passing reads: {}\n".format(passed_reads))
-        f.write("Total failed reads: {}\n".format(failed_reads))
-        f.write("Total corrected barcodes: {}\n".format(corrected_barcodes))
-        f.write("Total barcodes thrown out due to hamming distance collision: {}\n".format(ambiguous_barcodes))
-        f.write("Total barcodes thrown out due to unspecified annotation: {}\n".format(unspecified_barcodes))
+        f.write("Total reads processed: {}\n".format(summary_output_dict["total_reads"]))
+        f.write("Total passing reads: {}\n".format(summary_output_dict["passing_reads"]))
+        f.write("Total failed reads: {}\n".format(summary_output_dict["failed_reads"]))
+        f.write("Total corrected barcodes: {}\n".format(summary_output_dict["corrected_barcodes"]))
+        f.write("Total barcodes thrown out due to hamming distance collision: {}\n".format(summary_output_dict["ambiguous_barcodes"]))
+        f.write("Total barcodes thrown out due to unspecified annotation: {}\n".format(summary_output_dict["unspecified_barcodes"]))
     return None
 
 
@@ -1086,7 +1098,8 @@ def main():
     )
     
     # parse fastq input
-    total_reads, passed_reads, failed_reads, corrected_barcodes, ambiguous_barcodes, unspecified_barcodes = parse_fastq_input(
+    # total_reads, passed_reads, failed_reads, corrected_barcodes, ambiguous_barcodes, unspecified_barcodes = parse_fastq_input(
+    summary_output_dict:dict = parse_fastq_input(
         input_files = input_files,
         mode_dict = mode_dict,
         expected_index_dict = expected_index_dict,
@@ -1104,14 +1117,9 @@ def main():
 
     # log results
     output_summary(
-        total_reads,
-        passed_reads,
-        failed_reads,
-        corrected_barcodes,
-        ambiguous_barcodes,
-        unspecified_barcodes,
-        args.output_folder,
-        experiment_name
+        summary_output_dict = summary_output_dict,
+        output_folder = args.output_folder,
+        experiment_name = experiment_name
     )
 
 
