@@ -251,7 +251,7 @@ def generate_mode_dict(mode_list:list, mode_config_file:str) -> dict:
             modes_added += 1
 
     open_mode_config_file.close() # close mode config
-
+    
     validate_mode_count(mode_list, mode_dict, mode_config_file)
 
     logging.info("Mode dicitionary successfully created") # log dictionary
@@ -283,14 +283,6 @@ def add_mode_to_dict(mode_components:list, mode_dict:dict) -> dict:
         Returns the mode dictionary with the new mode addition
     """
 
-    
-    ################ DEPRECATED BUT SAVING FOR NOW ##################
-    # # extract components of mode
-    # mode, read1, index1, index2, read2, index_files = mode_components[0], mode_components[1], mode_components[2], mode_components[3], mode_components[4], mode_components[5:]
-    ################ DEPRECATED BUT SAVING FOR NOW ##################
-
-
-
     # instantiate mode and compoenents within mode dictionary
     mode = mode_components.pop(0)
     mode_dict[mode] = {} # add mode
@@ -306,9 +298,8 @@ def add_mode_to_dict(mode_components:list, mode_dict:dict) -> dict:
             if component_id in mode_dict[mode]:
                 sys.exit("\nERROR: {} is specified in multiple locations in mode file!!!\n")
             if component_id != 'null':
-                print(designation)
                 mode_dict[mode][component_id] = {
-                    'is_index': True if 'index' in component_id else False,
+                    # 'is_index': True if 'index' in component_id else False,
                     'index_in_read': True if 'index' in designation and 'read' in designation else False,
                     'start_pos': start_pos,
                     'end_pos': start_pos + component_len,
@@ -326,25 +317,14 @@ def add_mode_to_dict(mode_components:list, mode_dict:dict) -> dict:
             if 'read' in component_id:
                 mode_dict[mode][component_id]['trim_len'] = start_pos
 
-
-
-    ########## DEPRECATED BUT SAVING FOR NOW ##################        
-    # mode_dict[mode] = {}
-    # mode_dict[mode]['read1'] = {part.split(":")[0]: int(part.split(":")[1]) for part in read1.split(",")}
-    # mode_dict[mode]['index1'] = {part.split(":")[0]: int(part.split(":")[1]) for part in index1.split(",")}
-    # mode_dict[mode]['index2'] = {part.split(":")[0]: int(part.split(":")[1]) for part in index2.split(",")}
-    # mode_dict[mode]['read2'] = {part.split(":")[0]: int(part.split(":")[1]) for part in read2.split(",")}
-    ########## DEPRECATED BUT SAVING FOR NOW ################## 
-
-
-
     # add index file paths to dictionary - ignoring special flags
     mode_dict[mode]['index_file_paths'] = {}
     while mode_components:
         index_path_component:str = mode_components.pop(0)
         index_id, index_path = index_path_component.split('=')
         mode_dict[mode]['index_file_paths'][index_id] = index_path
-    print(mode_dict)
+        
+    mode_dict = dict(sorted(mode_dict.items())) # sort dict so indexes are in numerical order
     
     return mode_dict
 
@@ -639,6 +619,7 @@ def generate_output_file_dict(
     passing_output_file_dict : dict
         Dictionary containing open output file objects for passing reads.
     """
+    # TODO: check with andrew to see how this should be set up
     # instantiate output file dict with fail keys (not mode dependent)
     failing_output_file_dict:dict = {
         'R1_fail': open(generate_output_file_name(
@@ -646,12 +627,6 @@ def generate_output_file_dict(
             experiment_name = experiment_name,
             mode = None,
             index_read_num = 'R1',
-            fail = True), "w"),
-        'R2_fail': open(generate_output_file_name(
-            output_folder = output_folder,
-            experiment_name = experiment_name,
-            mode = None,
-            index_read_num = 'R2',
             fail = True), "w"),
         'I1_fail': open(generate_output_file_name(
             output_folder = output_folder, 
@@ -666,6 +641,14 @@ def generate_output_file_dict(
             index_read_num = 'I2',
             fail = True), "w")
     }
+    # add other files if inputs exist
+    if 'read2' in mode_dict[next(iter(mode_dict))]:
+        failing_output_file_dict['R2_fail'] = open(generate_output_file_name(
+            output_folder = output_folder,
+            experiment_name = experiment_name,
+            mode = None,
+            index_read_num = 'R2',
+            fail = True), "w")
 
     # instantiate dictionary for passing output file
     passing_output_file_dict:dict = {}
@@ -680,13 +663,15 @@ def generate_output_file_dict(
                     output_folder = output_folder,
                     experiment_name = experiment_name,
                     mode = mode,
-                    index_read_num = 'R1'), "w"),
-                'R2_pass': open(generate_output_file_name(
-                    output_folder = output_folder,
-                    experiment_name = experiment_name,
-                    mode = mode,
-                    index_read_num = 'R2'), "w")
+                    index_read_num = 'R1'), "w")
             }
+            if 'read2' in mode_dict[mode]:
+                passing_output_file_dict[mode]['R2_pass'] = open(generate_output_file_name(
+                        output_folder = output_folder,
+                        experiment_name = experiment_name,
+                        mode = mode,
+                        index_read_num = 'R2'), "w")
+            
     # if there are annotation files specified, the output files must include annotation names
     else:
         for mode in annotation_subjects_dict:
@@ -699,13 +684,14 @@ def generate_output_file_dict(
                         mode = mode,
                         index_read_num = 'R1',
                         annotation_subject = annotation_subject), 'w'),
-                    'R2_pass': open(generate_output_file_name(
+                }
+                if 'read2' in mode_dict[mode]:
+                    passing_output_file_dict[mode][annotation_subject]['R2_pass'] = open(generate_output_file_name(
                         output_folder = output_folder,
                         experiment_name = experiment_name,
                         mode = mode,
                         index_read_num = 'R2',
                         annotation_subject = annotation_subject), 'w')
-                }
     return passing_output_file_dict, failing_output_file_dict
 
 
@@ -909,25 +895,6 @@ def parse_fastq_input(
                         else:
                             true_index_seqs.append(None)
 
-
-
-            ################ DEPRECATED BUT SAVING FOR NOW ########################                        
-            # index1_len:int = mode_dict[mode]['index1']['index1']
-            # index1_seq:str = reads['index1'][1].strip()[:index1_len]
-            # index2_len:int = mode_dict[mode]['index2']['index2']
-            # index2_seq:str = reads['index2'][1].strip()[:index2_len]
-            # index3_len:int = mode_dict[mode]['read2']['index3'] # TODO: may need to make storage of index3 more dynamic
-            # index3_seq:str = reads['read2'][1][:index3_len]                     
-            
-            # # TODO: make more dynamic (ie index4) - can just create a function that returns corrected sequence or None for each index in mode
-            # # check for matching indexes
-            # true_index1_seq:str = expected_index_dict[mode]['index1'][index1_seq] if index1_seq in expected_index_dict[mode]['index1'] else None
-            # true_index2_seq:str = expected_index_dict[mode]['index2'][index2_seq] if index2_seq in expected_index_dict[mode]['index2'] else None
-            # true_index3_seq:str = expected_index_dict[mode]['index3'][index3_seq] if index3_seq in expected_index_dict[mode]['index3'] else None
-            ################ DEPRECATED BUT SAVING FOR NOW ########################   
-
-
-
             # if all legitimate indexes
             if None not in true_index_seqs:
                 # hamming distance collision
@@ -938,12 +905,11 @@ def parse_fastq_input(
                     # increment corrected barcodes if at least one index was corrected
                     if observed_index_seqs != true_index_seqs:
                         corrected_barcodes += 1 # increment corrected barcodes since all the way through corrections
-                    # prepend barcode to qname of each read
-                    read1_read, read2_read = [prepend_barcode_to_qname(read, true_index_seqs) for read in itemgetter('read1', 'read2')(reads)]
                     # slice reads if necessary
                     for designation in mode_dict[mode]:
                         if 'read' in designation:
-                            reads[designation] = slice_read(reads[designation], mode_dict[mode][designation]['trim_len'])
+                            reads[designation] = slice_read(reads[designation], mode_dict[mode][designation]['trim_len']) # trim reads if necessary
+                            reads[designation] = prepend_barcode_to_qname(reads[designation], true_index_seqs) # prepend barcode to qname of each read
                     # write reads to passing output files
                     if annotation_dict is not None:
                         # TODO: this should probbly be a function - will need to be more dynamic
@@ -956,21 +922,32 @@ def parse_fastq_input(
                             logging.info("Expected barcode found from sequence but annotation not specificed.")
                             unspecified_annotation = True # used to catch barcodes not specified in annotation 
                         if not unspecified_annotation:
-                            passing_output_file_dict[mode][annotation_subject]['R1_pass'].write("".join(reads['read1']))
-                            passing_output_file_dict[mode][annotation_subject]['R2_pass'].write("".join(reads['read2']))
+                            # TODO: could add more flexibility here if we want to but not sure if it's necessary
+                            if 'R1_pass' in passing_output_file_dict[mode][annotation_subject]:
+                                passing_output_file_dict[mode][annotation_subject]['R1_pass'].write("".join(reads['read1']))
+                            if 'R2_pass' in passing_output_file_dict[mode][annotation_subject]:
+                                passing_output_file_dict[mode][annotation_subject]['R2_pass'].write("".join(reads['read2']))
                     else:
-                        passing_output_file_dict[mode]['R1_pass'].write("".join(reads['read1']))
-                        passing_output_file_dict[mode]['R2_pass'].write("".join(reads['read2']))
+                        # TODO: could add more flexibility here if we want to but not sure if it's necessary
+                        if 'R1_pass' in passing_output_file_dict[mode]:
+                            passing_output_file_dict[mode]['R1_pass'].write("".join(reads['read1']))
+                        if 'R2_pass' in passing_output_file_dict[mode]:
+                            passing_output_file_dict[mode]['R2_pass'].write("".join(reads['read2']))
                     if not unspecified_annotation:
                         passed_reads += 1 # count the passed read
                         break # break out of mode_dict loop
 
             # if all modes checked and no pass then write to fail
             if mode_count == len(mode_dict):
-                failing_output_file_dict['R1_fail'].write("".join(reads['read1']))
-                failing_output_file_dict['R2_fail'].write("".join(reads['read2']))
-                failing_output_file_dict['I1_fail'].write("".join(reads['index1']))
-                failing_output_file_dict['I2_fail'].write("".join(reads['index2']))
+                # TODO: could add more flexibility here if we want to but not sure if it's necessary
+                if 'R1_fail' in failing_output_file_dict:
+                    failing_output_file_dict['R1_fail'].write("".join(reads['read1']))
+                if 'R2_fail' in failing_output_file_dict:
+                    failing_output_file_dict['R2_fail'].write("".join(reads['read2']))
+                if 'I1_fail' in failing_output_file_dict:
+                    failing_output_file_dict['I1_fail'].write("".join(reads['index1']))
+                if 'I2_fail' in failing_output_file_dict:
+                    failing_output_file_dict['I2_fail'].write("".join(reads['index2']))
                 failed_reads += 1 # count the failed read
                 
                 # count ambiguous barcode if hamming distance collision encountered
