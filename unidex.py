@@ -246,7 +246,7 @@ def generate_mode_dict(mode_list:list, mode_config_file:str) -> dict:
         mode_components = line.strip().split() # parse mode components / characteristics
         
         # extract mode components if in specified mode list
-        if mode_components[0] in mode_list:
+        if len(mode_components) > 0 and mode_components[0] in mode_list:
             mode_dict = add_mode_to_dict(mode_components, mode_dict)
             modes_added += 1
 
@@ -408,7 +408,7 @@ def execute_delayed_mode():
     sys.exit("Delayed mode not currently implemented.")
 
 
-def define_input_files(args) -> tuple[str, str, str, str]:
+def define_input_files(args) -> tuple:
     """
     Defines read and index files. 
 
@@ -932,7 +932,7 @@ def parse_fastq_input(
                             annotation_subject = annotation_dict[mode][read_barcode]
                             unspecified_annotation:bool = False # used to catch barcodes not specified in annotation                        
                         else:
-                            logging.info("Expected barcode found from sequence but annotation not specificed.")
+                            #logging.info("Expected barcode found from sequence but annotation not specificed.")
                             unspecified_annotation = True # used to catch barcodes not specified in annotation 
                         if not unspecified_annotation:
                             # TODO: could add more flexibility here if we want to but not sure if it's necessary
@@ -1041,10 +1041,10 @@ def output_summary(
     output_filepath = os.path.join(os.path.abspath(output_folder), experiment_name, output_filename)
     
     with open(output_filepath, 'w') as f:
-        f.write("Overal processing statistics:\n")
+        f.write("Overall processing statistics:\n")
         f.write("Total reads processed: {}\n".format(summary_output_dict["total_reads"]))
         f.write("Total assigned reads: {} ({}%)\n".format(summary_output_dict["passing_reads"], round(summary_output_dict["passing_reads"] / summary_output_dict["total_reads"] * 100, 2)))
-        f.write("Total failed reads: {} ({}%)\n".format(summary_output_dict["failed_reads"], round(summary_output_dict["passing_reads"] / summary_output_dict["total_reads"] * 100, 2)))
+        f.write("Total failed reads: {} ({}%)\n".format(summary_output_dict["failed_reads"], round(summary_output_dict["failed_reads"] / summary_output_dict["total_reads"] * 100, 2)))
         f.write("Total corrected barcodes: {} ({}%)\n".format(summary_output_dict["corrected_barcodes"], round(summary_output_dict["corrected_barcodes"] / summary_output_dict["passing_reads"] * 100, 2)))
         f.write("Total barcodes thrown out due to hamming distance collision: {} ({}%)\n".format(summary_output_dict["ambiguous_barcodes"], round(summary_output_dict["ambiguous_barcodes"] / summary_output_dict["total_reads"] * 100, 2)))
         f.write("Total barcodes thrown out due to unspecified annotation: {} ({}%)\n".format(summary_output_dict["unspecified_barcodes"], round(summary_output_dict["unspecified_barcodes"] / summary_output_dict["total_reads"] * 100, 2)))
