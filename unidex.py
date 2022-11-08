@@ -36,33 +36,33 @@ from operator import itemgetter
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description = "Demultiplex fastq")
+    parser = argparse.ArgumentParser(description = "Demultiplex FASTQs.")
 
     # Info options
     info = parser.add_argument_group("Info options")
     info.add_argument("-L", "--query_mode_file", action = 'store_true', help = "List modes present in the mode config file."
-                            "Can specify a different mode file with -m and it will list modes in that file."
-                            "Can also provide an argument to match to refine list, e.g. 's3'")
+                            " Can specify a different mode file with -m and it will list modes in that file."
+                            " Can also provide an argument to match to refine list, e.g. 's3'.")
     info.add_argument("-I", "--request_mode_info", help = "Provide info on one or more comma separated modes as detailed in the specified"
                             "modes file (-m or default).")
 
     # Run options
     run = parser.add_argument_group("Run options")
-    run.add_argument("-R", "--run_folder", help = "Run Folder (where fastq files are present)")
+    run.add_argument("-R", "--run_folder", help = "Run folder where fastq files are present.")
     run.add_argument("-M", "--mode_list", type = str, help = "Mode list - modes must be specified in the modes.cfg file."
-                            "Modes must be comma separated and will demultiplex in specified order listed.")
+                            " Modes must be comma separated and will demultiplex in specified order listed.")
     run.add_argument("-l", "--delayed_mode", action = 'store_true', help = "Delayed mode. Will wait until fastq files are propagated"
-                            "in the specified fastq directory (-r), then will run."
-                            "Only works when specifying run name, not individual fastq files.")
+                            " in the specified fastq directory (-r), then will run."
+                            " Only works when specifying run name, not individual fastq files.")
 
     # Default options
     default = parser.add_argument_group("Default options")
-    default.add_argument("-O", "--output_folder", help = "Output folder (def = run name, -R)")
-    default.add_argument("-d", "--max_hamming_distance", help = "Max allowed hamming distance", type = int, default = 2)
+    default.add_argument("-O", "--output_folder", help = "Output folder (def = Run folder, -R)")
+    default.add_argument("-d", "--max_hamming_distance", help = "Max allowed hamming distance, default 2", type = int, default = 2)
 
     # Default locations
     default_locations = parser.add_argument_group("Default locations")
-    default_locations.add_argument("-r", "--fastq_folder", help = "Fastq folder full path.", type = str)
+    default_locations.add_argument("-r", "--fastq_folder", help = "Fastq folder full path (def = Run folder, -R.", type = str)
     default_locations.add_argument("-m", "--mode_config_file", help = "Mode config file", required = True)
 
     # Fastq input (default = auto detect):
@@ -431,14 +431,15 @@ def define_input_files(args) -> tuple:
     # instantiate standard files
     read1_file:str = ""
     read2_file:str = ""
-    idnex1_file:str = ""
+    index1_file:str = ""
     index2_file:str = ""
     
     # define read 1
     if args.read1_file is not None:
         read1_file = os.path.abspath(args.read1_file)
     elif args.fastq_folder is not None:
-        read1_file = os.path.abspath(os.path.join(args.fastq_folder, "Undetermined_S0_L001_R1_001.fastq.gz"))
+        print(args.fastq_folder)
+        read1_file = os.path.abspath(os.path.join(args.fastq_folder, "Undetermined_S0_R1_001.fastq.gz"))
         if not os.path.exists(read1_file):
             sys.exit("ERROR: Read1 file does not exist {}".format(read1_file))
     else:
@@ -448,7 +449,7 @@ def define_input_files(args) -> tuple:
     if args.read2_file is not None:
         read2_file = os.path.abspath(args.read2_file)
     elif args.fastq_folder is not None:
-        read2_file = os.path.abspath(os.path.join(args.fastq_folder, "Undetermined_S0_L001_R2_001.fastq.gz"))
+        read2_file = os.path.abspath(os.path.join(args.fastq_folder, "Undetermined_S0_R2_001.fastq.gz"))
         if not os.path.exists(read2_file):
             logging.info("No read 2 file detected at path {}.\nMoving forward with single end read.".format(read2_file))
             read2_file = ""
@@ -457,7 +458,7 @@ def define_input_files(args) -> tuple:
     if args.index1_file is not None:
         index1_file = os.path.abspath(args.index1_file)
     elif args.fastq_folder is not None:
-        index1_file = os.path.abspath(os.path.join(args.fastq_folder, "Undetermined_S0_L001_I1_001.fastq.gz"))
+        index1_file = os.path.abspath(os.path.join(args.fastq_folder, "Undetermined_S0_I1_001.fastq.gz"))
         if not os.path.exists(index1_file):
             logging.info("No index 1 file detected at path {}".format(index1_file))
             index1_file = ""
@@ -466,7 +467,7 @@ def define_input_files(args) -> tuple:
     if args.index2_file is not None:
         index2_file = os.path.abspath(args.index2_file)
     elif args.fastq_folder is not None:
-        index2_file = os.path.abspath(os.path.join(args.fastq_folder, "Undetermined_S0_L001_I2_001.fastq.gz"))
+        index2_file = os.path.abspath(os.path.join(args.fastq_folder, "Undetermined_S0_I2_001.fastq.gz"))
         if not os.path.exists(index2_file):
             logging.info("No index 2 file detected at path {}".format(index2_file))
             index2_file = ""
@@ -675,7 +676,19 @@ def generate_output_file_dict(
     # if there are annotation files specified, the output files must include annotation names
     else:
         for mode in annotation_subjects_dict:
-            passing_output_file_dict[mode] = {}
+            passing_output_file_dict[mode] = {'unassigned':{}}
+            # generate unassigned
+            passing_output_file_dict[mode]['unassigned']['R1_unassigned'] = open(generate_output_file_name(
+                output_folder = output_folder,
+                experiment_name = experiment_name,
+                mode = mode,
+                index_read_num = 'unassigned.R1'), 'w')
+            if 'read2' in mode_dict[mode]:
+                passing_output_file_dict[mode]['unassigned']['R2_unassigned'] = open(generate_output_file_name(
+                        output_folder = output_folder,
+                        experiment_name = experiment_name,
+                        mode = mode,
+                        index_read_num = 'unassigned.R2'), 'w')
             for annotation_subject in annotation_subjects_dict[mode]:
                 passing_output_file_dict[mode][annotation_subject] = {
                     'R1_pass': open(generate_output_file_name(
@@ -834,6 +847,8 @@ def parse_fastq_input(
                 Total barcodes that were succesfully corrected.
             unspecified_barcodes : int
                 Total barcodes thrown out due to unspecified annotation.
+            unassigned_reads : int
+                Total barcodes found by a mode but unassigned to an annotation.
     """
     # instantiate counters
     summary_output_dict:dict = {
@@ -842,10 +857,10 @@ def parse_fastq_input(
         "failed_reads": 0,
         "corrected_barcodes": 0,
         "ambiguous_barcodes": 0, # tracks reads thrown out due to hamming distance collision
-        "unspecified_barcodes": 0, # tracks reads thrown out due to unspecified annotation
-        "modes": {mode:{'count': 0, 'annotations': {}} for mode in mode_dict}
+        "unassigned_reads": 0,
+        "modes": {mode:{'count': 0, 'unassigned': 0,'annotations': {}} for mode in mode_dict}
     }
-    # add annotatios to summary dict as well
+    # add annotations to summary dict as well
     if annotation_dict is not None:
         for mode in summary_output_dict['modes']:
             for annotation_subject in annotation_dict[mode].values():
@@ -940,17 +955,26 @@ def parse_fastq_input(
                                 passing_output_file_dict[mode][annotation_subject]['R1_pass'].write("".join(reads['read1']))
                             if 'R2_pass' in passing_output_file_dict[mode][annotation_subject]:
                                 passing_output_file_dict[mode][annotation_subject]['R2_pass'].write("".join(reads['read2']))
-                            summary_output_dict['modes'][mode]['annotations'][annotation_subject]['count'] += 1 # incrment annotation subject read count
+                            summary_output_dict['modes'][mode]['annotations'][annotation_subject]['count'] += 1 # increment annotation subject read count
+                        else:
+                            if 'R1_unassigned' in passing_output_file_dict[mode]['unassigned']:
+                                passing_output_file_dict[mode]['unassigned']['R1_unassigned'].write("".join(reads['read1']))
+                            if 'R2_unassigned' in passing_output_file_dict[mode]['unassigned']:
+                                passing_output_file_dict[mode]['unassigned']['R2_unassigned'].write("".join(reads['read2']))
                     else:
                         # TODO: could add more flexibility here if we want to but not sure if it's necessary
                         if 'R1_pass' in passing_output_file_dict[mode]:
                             passing_output_file_dict[mode]['R1_pass'].write("".join(reads['read1']))
                         if 'R2_pass' in passing_output_file_dict[mode]:
                             passing_output_file_dict[mode]['R2_pass'].write("".join(reads['read2']))
+
                     if not unspecified_annotation:
                         summary_output_dict['passing_reads'] += 1 # count the passed read
                         summary_output_dict['modes'][mode]['count'] += 1 # increment the mode to which read assigned
-                        break # break out of mode_dict loop
+                    else:
+                        summary_output_dict['unassigned_reads'] += 1 # count the unassigned read
+                        summary_output_dict['modes'][mode]['unassigned'] += 1 # increment the mode to which read belongs but unassigned
+                    break # found read
 
             # if all modes checked and no pass then write to fail
             if mode_count == len(mode_dict):
@@ -968,9 +992,6 @@ def parse_fastq_input(
                 # count ambiguous barcode if hamming distance collision encountered
                 if ambiguous_index_encountered:
                     summary_output_dict["ambiguous_barcodes"] += 1
-                # counts barcodes thrown out due to unspecified annotation
-                if unspecified_annotation:
-                    summary_output_dict["unspecified_barcodes"] += 1
         
         # update statment
         if summary_output_dict['total_reads'] % 1000000 == 0:
@@ -1012,8 +1033,8 @@ def output_summary(
             Total barcodes that were succesfully corrected.
         ambiguous_barcodes : int
             Total barcodes thrown out due to hamming distance collision.
-        unspecified_barcodes : int
-            Total barcodes thrown out due to unspecified annotation.
+        unassigned_reads : int
+            Total barcodes found by a mode but unassigned to an annotation.
     
     output_folder : str
         Folder to output summary file to.
@@ -1022,11 +1043,11 @@ def output_summary(
     """
     logging.info("Overall processing statistics:")
     logging.info("Total reads processed: {}".format(summary_output_dict["total_reads"]))
-    logging.info("Total assigned reads: {} ({}%)".format(summary_output_dict["passing_reads"], round(summary_output_dict["passing_reads"] / summary_output_dict["total_reads"] * 100, 2)))
-    logging.info("Total failed reads: {} ({}%)".format(summary_output_dict["failed_reads"], round(summary_output_dict["passing_reads"] / summary_output_dict["total_reads"] * 100, 2)))
-    logging.info("Total corrected barcodes: {} ({}%)".format(summary_output_dict["corrected_barcodes"], round(summary_output_dict["corrected_barcodes"] / summary_output_dict["passing_reads"] * 100, 2)))
-    logging.info("Total barcodes thrown out due to hamming distance collision: {} ({}%)".format(summary_output_dict["ambiguous_barcodes"], round(summary_output_dict["ambiguous_barcodes"] / summary_output_dict["total_reads"] * 100, 2)))
-    logging.info("Total barcodes thrown out due to unspecified annotation: {} ({}%)\n".format(summary_output_dict["unspecified_barcodes"], round(summary_output_dict["unspecified_barcodes"] / summary_output_dict["total_reads"] * 100, 2)))
+    logging.info("\tTotal failed reads: {} ({}%)".format(summary_output_dict["failed_reads"], round(summary_output_dict["failed_reads"] / summary_output_dict["total_reads"] * 100, 2)))
+    logging.info("\t\tTotal barcodes thrown out due to hamming distance collision: {} ({}%)".format(summary_output_dict["ambiguous_barcodes"], round(summary_output_dict["ambiguous_barcodes"] / summary_output_dict["total_reads"] * 100, 2)))
+    logging.info("\tTotal assigned reads: {} ({}%)".format(summary_output_dict["passing_reads"], round(summary_output_dict["passing_reads"] / summary_output_dict["total_reads"] * 100, 2)))
+    logging.info("\t\tTotal corrected barcodes: {} ({}%)".format(summary_output_dict["corrected_barcodes"], round(summary_output_dict["corrected_barcodes"] / summary_output_dict["passing_reads"] * 100, 2)))
+    logging.info("\tTotal assigned reads but unassigned to annotation: {} ({}%)".format(summary_output_dict["unassigned_reads"], round(summary_output_dict["unassigned_reads"] / summary_output_dict["total_reads"] * 100, 2)))
 
     logging.info("By mode processing statistics:")
     for mode in summary_output_dict['modes']:
@@ -1034,7 +1055,8 @@ def output_summary(
         if summary_output_dict['modes'][mode]['count'] > 0:
             for annotation_subject in summary_output_dict['modes'][mode]['annotations']:
                 logging.info("\tTotal reads assigned to annotation {}: {} ({}%)".format(annotation_subject, summary_output_dict['modes'][mode]['annotations'][annotation_subject]['count'], round(summary_output_dict['modes'][mode]['annotations'][annotation_subject]['count'] / summary_output_dict['modes'][mode]['count'] * 100, 2)))
-            
+        logging.info("Total reads assigned to mode but unassigned to annotation in mode {}: {} ({}%)".format(mode, summary_output_dict['modes'][mode]['unassigned'], round(summary_output_dict['modes'][mode]['unassigned'] / summary_output_dict['total_reads'] * 100, 2)))
+
     # define output summary file
     timestr = time.strftime("%Y%m%d-%H%M%S")
     output_filename = ".".join(["summary-output", timestr, "txt"])
@@ -1043,18 +1065,19 @@ def output_summary(
     with open(output_filepath, 'w') as f:
         f.write("Overall processing statistics:\n")
         f.write("Total reads processed: {}\n".format(summary_output_dict["total_reads"]))
-        f.write("Total assigned reads: {} ({}%)\n".format(summary_output_dict["passing_reads"], round(summary_output_dict["passing_reads"] / summary_output_dict["total_reads"] * 100, 2)))
-        f.write("Total failed reads: {} ({}%)\n".format(summary_output_dict["failed_reads"], round(summary_output_dict["failed_reads"] / summary_output_dict["total_reads"] * 100, 2)))
-        f.write("Total corrected barcodes: {} ({}%)\n".format(summary_output_dict["corrected_barcodes"], round(summary_output_dict["corrected_barcodes"] / summary_output_dict["passing_reads"] * 100, 2)))
-        f.write("Total barcodes thrown out due to hamming distance collision: {} ({}%)\n".format(summary_output_dict["ambiguous_barcodes"], round(summary_output_dict["ambiguous_barcodes"] / summary_output_dict["total_reads"] * 100, 2)))
-        f.write("Total barcodes thrown out due to unspecified annotation: {} ({}%)\n".format(summary_output_dict["unspecified_barcodes"], round(summary_output_dict["unspecified_barcodes"] / summary_output_dict["total_reads"] * 100, 2)))
-    
+        f.write("\tTotal failed reads: {} ({}%)\n".format(summary_output_dict["failed_reads"], round(summary_output_dict["failed_reads"] / summary_output_dict["total_reads"] * 100, 2)))
+        f.write("\t\tTotal barcodes thrown out due to hamming distance collision: {} ({}%)\n".format(summary_output_dict["ambiguous_barcodes"], round(summary_output_dict["ambiguous_barcodes"] / summary_output_dict["total_reads"] * 100, 2)))
+        f.write("\tTotal assigned reads: {} ({}%)\n".format(summary_output_dict["passing_reads"], round(summary_output_dict["passing_reads"] / summary_output_dict["total_reads"] * 100, 2)))
+        f.write("\t\tTotal corrected barcodes: {} ({}%)\n".format(summary_output_dict["corrected_barcodes"], round(summary_output_dict["corrected_barcodes"] / summary_output_dict["passing_reads"] * 100, 2)))
+        f.write("\tTotal reads assigned to mode but unassigned to annotation: {} ({}%)\n".format(summary_output_dict["unassigned_reads"], round(summary_output_dict["unassigned_reads"] / summary_output_dict["total_reads"] * 100, 2)))
+
         f.write("\nBy mode processing statistics:\n")
         for mode in summary_output_dict['modes']:
             f.write("Total reads assigned to mode {}: {} ({}%)\n".format(mode, summary_output_dict['modes'][mode]['count'], round(summary_output_dict['modes'][mode]['count'] / summary_output_dict['total_reads'] * 100, 2)))
             if summary_output_dict['modes'][mode]['count'] > 0:
                 for annotation_subject in summary_output_dict['modes'][mode]['annotations']:
                     f.write("\tTotal reads assigned to annotation {}: {} ({}%)\n".format(annotation_subject, summary_output_dict['modes'][mode]['annotations'][annotation_subject]['count'], round(summary_output_dict['modes'][mode]['annotations'][annotation_subject]['count'] / summary_output_dict['modes'][mode]['count'] * 100, 2)))
+            f.write("Total reads assigned to mode but unassigned to annotation in mode {}: {} ({}%)\n".format(mode, summary_output_dict['modes'][mode]['unassigned'], round(summary_output_dict['modes'][mode]['unassigned'] / summary_output_dict['total_reads'] * 100, 2)))
                 
     return None
 
@@ -1062,6 +1085,16 @@ def output_summary(
 # define program
 def main():
     args = parse_args()
+
+    # if no output folder, use -R as default
+    if args.output_folder is None:
+        args.output_folder = args.run_folder
+    # if fastq folder and -R used, combine
+    if args.fastq_folder is not None and args.run_folder is not None:
+        args.fastq_folder = os.path.join(args.fastq_folder,args.run_folder)
+    # if no fastq folder, use -R as default
+    if args.fastq_folder is None:
+        args.fastq_folder = args.run_folder
 
     # first check if mode file is queried
     if args.query_mode_file:
@@ -1097,6 +1130,13 @@ def main():
     if args.delayed_mode:
         execute_delayed_mode()
 
+    # define experiment name
+    if args.run_folder is not None:
+        experiment_name = os.path.basename(args.run_folder)
+    else:
+        experiment_name = os.path.basename(args.fastq_folder)
+    logging.info("User has defined experiment name: {}".format(experiment_name))
+
     # TODO: need to address single-end instances
     # define read and index input files
     input_files:tuple = define_input_files(args)
@@ -1106,13 +1146,6 @@ def main():
         mode_dict = mode_dict,
         hamming_distance = args.max_hamming_distance
     )
-
-    # define experiment name
-    if args.run_folder is not None:
-        experiment_name = os.path.basename(args.run_folder)
-    else:
-        experiment_name = os.path.basename(args.fastq_folder)
-    logging.info("User has defined experiment name: {}".format(experiment_name))
 
     # generate and open output file objects
     passing_output_file_dict, failing_output_file_dict = generate_output_file_dict(
