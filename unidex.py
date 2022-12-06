@@ -4,7 +4,7 @@
 Unidex
 
 Unidex is a universal demultiplexer that can be applied to a range of sequencing data types. The
-progam creates demultiplexed fastq files given gzipped fastq files, expected sequences, and 
+progam creates demultiplexed fastq files given gzipped fastq files, expected sequences, and
 annotations as input. Unidex was originally generated in Perl by Dr. Andrew Adey at Oregon Health
 and Science University (OHSU). The tool has been translated into Python by James Adler at the Cancer
 Early Detection Advanced Research Center (CEDAR), a part of the Knight Cancer Research Institue
@@ -78,7 +78,7 @@ def parse_args():
                             "If only one mode is specified, then it will default to that mode."
                             "[mode1]=[annot_file1],[mode2]=[annot_file2],etc... OR"
                             "First column of annot file designated mode for that annot")
-    
+
     return parser.parse_args()
 
 
@@ -97,7 +97,7 @@ def validate_mode_file_exists(mode_file:str) -> bool:
         sys.exit("Please define valid mode file using -m flag.")
     return True
 
-        
+
 def print_available_modes(mode_file:str) -> None:
     """
     Prints available modes to console and exits program.
@@ -137,7 +137,7 @@ def print_mode_details(mode_file:str, mode:str) -> None:
     print("Mode file specified:\n\t{}".format(mode_file))
     print("User-specified mode of interest:\n\t{}".format(mode))
     print("Mode details:")
-    
+
     # find specified mode in mode file and print details
     with open(mode_file, "r") as f:
         while True:
@@ -244,14 +244,14 @@ def generate_mode_dict(mode_list:list, mode_config_file:str) -> dict:
         if line.startswith("#") or not line[0]: # skip header / description lines
             continue
         mode_components = line.strip().split() # parse mode components / characteristics
-        
+
         # extract mode components if in specified mode list
         if len(mode_components) > 0 and mode_components[0] in mode_list:
             mode_dict = add_mode_to_dict(mode_components, mode_dict)
             modes_added += 1
 
     open_mode_config_file.close() # close mode config
-    
+
     validate_mode_count(mode_list, mode_dict, mode_config_file)
 
     logging.info("Mode dicitionary successfully created") # log dictionary
@@ -263,8 +263,6 @@ def generate_mode_dict(mode_list:list, mode_config_file:str) -> dict:
     return mode_dict
 
 
-# TODO: may need to come back and address additional mode variations - this works for the s3 mode but may fail for the 10x mode
-# TODO: can make much more flexible
 def add_mode_to_dict(mode_components:list, mode_dict:dict) -> dict:
     """
     Adds new mode to mode dict
@@ -296,26 +294,18 @@ def add_mode_to_dict(mode_components:list, mode_dict:dict) -> dict:
             component_id, component_len = component.split(':')
             component_len = int(component_len)
             if component_id in mode_dict[mode]:
-                sys.exit("\nERROR: {} is specified in multiple locations in mode file!!!\n")
+                sys.exit("\nERROR: {} is specified in multiple locations in mode file!!!\n".format(component_id))
             if component_id != 'null':
                 mode_dict[mode][component_id] = {
-                    # 'is_index': True if 'index' in component_id else False,
                     'index_in_read': True if 'index' in designation and 'read' in designation else False,
                     'start_pos': start_pos,
                     'end_pos': start_pos + component_len,
-                    'needs_trimmed': True if 'null' in designation and 'read' in component_id or 'index' in designation and 'read' in component_id else False,
-                    'trim_len': 0,
                     'location': 'read1' if 'read1' in designation else 'read2' if 'read2' in designation else component_id # this will be 'index1', 'index2', 'read1', or 'read2' to be referenced in parse
                 }
                 components_encountered_in_designation.append(component_id)
             # increment start position
             start_pos += component_len
-        # have to go back at end and update trim length for reads - which is euqual to the up to date start position
-        # TODO: this may not be the case if there are also indexes at the end of the read or in middle of read
-        # TODO: could loop back through the components and extract the lengths to get this right in the future
-        for component_id in components_encountered_in_designation:
-            if 'read' in component_id:
-                mode_dict[mode][component_id]['trim_len'] = start_pos
+
 
     # add index file paths to dictionary - ignoring special flags
     mode_dict[mode]['index_file_paths'] = {}
@@ -323,9 +313,9 @@ def add_mode_to_dict(mode_components:list, mode_dict:dict) -> dict:
         index_path_component:str = mode_components.pop(0)
         index_id, index_path = index_path_component.split('=')
         mode_dict[mode]['index_file_paths'][index_id] = index_path
-        
+
     mode_dict = dict(sorted(mode_dict.items())) # sort dict so indexes are in numerical order
-    
+
     return mode_dict
 
 
@@ -339,7 +329,7 @@ def generate_annotation_dict(annotation_files_list:list, mode_list:list=None) ->
         List of all annotation files with specified mode. Format is [mode1]=[annot_file1]
     mode_list : list, default = None
         List of corresponding mode designation for each annotation file. Default value is None, as mode could be specified in annotation file.
-    
+
     Returns:
     --------
     annotation_dict : dict
@@ -353,7 +343,7 @@ def generate_annotation_dict(annotation_files_list:list, mode_list:list=None) ->
     # process each annotation file
     for i, annotation_file in enumerate(annotation_files_list):
         logging.info("Processing annotation file: {}".format(annotation_file))
-        
+
         mode_in_annot_file:bool = False # default is for mode to specified at command line
         lines_processed:int = 0 # instantiate line tracker
 
@@ -383,7 +373,7 @@ def generate_annotation_dict(annotation_files_list:list, mode_list:list=None) ->
 
         # process entire file
         while True:
-            line = open_annotation_file.readline().strip().split()            
+            line = open_annotation_file.readline().strip().split()
             if not line: # break if end of file
                 break
             if mode_in_annot_file: # may be multiple modes within annotation file
@@ -393,10 +383,10 @@ def generate_annotation_dict(annotation_files_list:list, mode_list:list=None) ->
                 if mode not in annotation_subjects_dict:
                     annotation_subjects_dict[mode] = set()
             else:
-                cellID, annot = line # extract only two columns if mode specified in command line        
+                cellID, annot = line # extract only two columns if mode specified in command line
             annotation_dict[mode][cellID] = annot # add instance to dictionary
             annotation_subjects_dict[mode].add(annot) # add instance to subject dictionary
-            
+
         logging.info("Total lines processed for annotation file '{}': {}".format(annotation_file, len(annotation_dict[mode])))
         open_annotation_file.close()
 
@@ -410,7 +400,7 @@ def execute_delayed_mode():
 
 def define_input_files(args) -> tuple:
     """
-    Defines read and index files. 
+    Defines read and index files.
 
     Parameters:
     -----------
@@ -433,7 +423,7 @@ def define_input_files(args) -> tuple:
     read2_file:str = ""
     index1_file:str = ""
     index2_file:str = ""
-    
+
     # define read 1
     if args.read1_file is not None:
         read1_file = os.path.abspath(args.read1_file)
@@ -463,7 +453,7 @@ def define_input_files(args) -> tuple:
             logging.info("No index 1 file detected at path {}".format(index1_file))
             index1_file = ""
 
-    # define index 2    
+    # define index 2
     if args.index2_file is not None:
         index2_file = os.path.abspath(args.index2_file)
     elif args.fastq_folder is not None:
@@ -511,12 +501,12 @@ def generate_expected_index_dict(mode_dict:dict, hamming_distance:int) -> dict:
         for index in mode_dict[mode]['index_file_paths']:
             with open(mode_dict[mode]['index_file_paths'][index], "r") as f:
                 expected_index_dict[mode][index] = {line.split('\t')[-1]:line.split('\t')[-1] for line in f.read().split('\n') if line}
-    
+
         # generate hamming distance possibilities
         ignore_hamming_distance_priority:bool = False # avoids overwriting higher priority (lower hamming distance) indexes
         if hamming_distance > 0:
             for index in expected_index_dict[mode]:
-                # generate list of true indexes for 
+                # generate list of true indexes for
                 expected_sequences = list(expected_index_dict[mode][index].keys())
                 encountered_sequences = set(expected_sequences)
                 # loop through hamming distance step wise
@@ -619,6 +609,8 @@ def generate_output_file_dict(
     --------
     passing_output_file_dict : dict
         Dictionary containing open output file objects for passing reads.
+    failing_output_file_dict : dict
+        Dictionary containing open output file objects for failing reads.
     """
     # TODO: check with andrew to see how this should be set up
     # instantiate output file dict with fail keys (not mode dependent)
@@ -630,7 +622,7 @@ def generate_output_file_dict(
             index_read_num = 'R1',
             fail = True), "w"),
         'I1_fail': open(generate_output_file_name(
-            output_folder = output_folder, 
+            output_folder = output_folder,
             experiment_name = experiment_name,
             mode = None,
             index_read_num = 'I1',
@@ -658,53 +650,39 @@ def generate_output_file_dict(
     if annotation_subjects_dict is None:
         # loop through each mode and add to new dict
         for mode in mode_dict:
-            passing_output_file_dict[mode] = {
-                # TODO: address single-end sequencing situations - need to be more dynamic here
-                'R1_pass': open(generate_output_file_name(
-                    output_folder = output_folder,
-                    experiment_name = experiment_name,
-                    mode = mode,
-                    index_read_num = 'R1'), "w")
-            }
-            if 'read2' in mode_dict[mode]:
-                passing_output_file_dict[mode]['R2_pass'] = open(generate_output_file_name(
+            passing_output_file_dict[mode] = {} # instantiate mode in passing output dict
+            for component in mode_dict[mode]:
+                if 'read' in component:
+                    passing_output_file_dict[mode]['R{}_pass'.format(component[-1])] = open(generate_output_file_name(
                         output_folder = output_folder,
                         experiment_name = experiment_name,
                         mode = mode,
-                        index_read_num = 'R2'), "w")
-            
+                        index_read_num = 'R{}'.format(component[-1]) # adds read num to R (flexible to any number of reads)
+                    ), 'w')
+
     # if there are annotation files specified, the output files must include annotation names
     else:
         for mode in annotation_subjects_dict:
             passing_output_file_dict[mode] = {'unassigned':{}}
             # generate unassigned
-            passing_output_file_dict[mode]['unassigned']['R1_unassigned'] = open(generate_output_file_name(
-                output_folder = output_folder,
-                experiment_name = experiment_name,
-                mode = mode,
-                index_read_num = 'unassigned.R1'), 'w')
-            if 'read2' in mode_dict[mode]:
-                passing_output_file_dict[mode]['unassigned']['R2_unassigned'] = open(generate_output_file_name(
+            for component in mode_dict[mode]:
+                if 'read' in component:
+                    passing_output_file_dict[mode]['unassigned']['R{}_unassigned'] = open(generate_output_file_name(
                         output_folder = output_folder,
                         experiment_name = experiment_name,
                         mode = mode,
-                        index_read_num = 'unassigned.R2'), 'w')
+                        index_read_num = 'unassigned.R{}'.format(component[-1])), 'w')
             for annotation_subject in annotation_subjects_dict[mode]:
-                passing_output_file_dict[mode][annotation_subject] = {
-                    'R1_pass': open(generate_output_file_name(
-                        output_folder = output_folder,
-                        experiment_name = experiment_name,
-                        mode = mode,
-                        index_read_num = 'R1',
-                        annotation_subject = annotation_subject), 'w'),
-                }
-                if 'read2' in mode_dict[mode]:
-                    passing_output_file_dict[mode][annotation_subject]['R2_pass'] = open(generate_output_file_name(
-                        output_folder = output_folder,
-                        experiment_name = experiment_name,
-                        mode = mode,
-                        index_read_num = 'R2',
-                        annotation_subject = annotation_subject), 'w')
+                for component in mode_dict[mode]:
+                    if 'read' in component:
+                        passing_output_file_dict[mode][annotation_subject] = {
+                            'R{}_pass'.format(component[-1]): open(generate_output_file_name(
+                                output_folder = output_folder,
+                                experiment_name = experiment_name,
+                                mode = mode,
+                                index_read_num = 'R{}'.format(component[-1]),
+                                annotation_subject = annotation_subject), 'w'),
+                        }
     return passing_output_file_dict, failing_output_file_dict
 
 
@@ -719,7 +697,7 @@ def close_all_files(passing_output_file_dict:dict, failing_output_file_dict:dict
     failing_output_file_dict : dict
 
     annotation_file_used : bool, default False
-        Indicates if annotation file was used. Changes structure of the passing_output_file_dict. 
+        Indicates if annotation file was used. Changes structure of the passing_output_file_dict.
 
     """
     for instance in failing_output_file_dict:
@@ -768,7 +746,7 @@ def prepend_barcode_to_qname(read:list, true_index_seqs:list) -> list:
     --------
     read : list
         Returns the same list as input, but with barcode appended between '@' and rest of sequence.
-        
+
     Example:
     --------
     before: ['@SOMETHING:SOMETHING\n', 'AAA\n', '+\n', 'JJJ\n']
@@ -782,7 +760,7 @@ def prepend_barcode_to_qname(read:list, true_index_seqs:list) -> list:
     return read
 
 
-def slice_read(read:list, slice:int) -> list:
+def slice_read(read:list, slice_start:int, slice_end:int) -> list:
     """
     Slices read to remove unwanted indexes or sequences.
 
@@ -790,16 +768,22 @@ def slice_read(read:list, slice:int) -> list:
     -----------
     read : list
         List containing four components of read from fastq file.
-    slice : int
-        Number of nucleotides to remove from beginning of read.
+    slice_start : int
+        Sets slice starting position.
+    slice_end : int
+        Sets slice ending position.
 
     Returns:
     --------
     read : list
         List containing four components of read after slicing.
     """
-    read[1] = read[1][slice:] # slice read sequence
-    read[3] = read[3][slice:] # slice quality scores
+    # set slice_end to remaining sequence if length unspecified (indicates was set as '0' in mode file)
+    if slice_start == slice_end:
+        slice_end = len(read[1])
+    # perform slice
+    read[1] = read[1][slice_start:slice_end] # slice read sequence
+    read[3] = read[3][slice_start:slice_end] # slice quality scores
     return read
 
 
@@ -834,7 +818,7 @@ def parse_fastq_input(
     --------
     summary_output_dict : dict
         Dictionary containing counts of interest (ie reads by mode, annotation, fail, abmiguous, etc.)
-        
+
             Components:
             -----------
             total_reads : int
@@ -865,7 +849,7 @@ def parse_fastq_input(
         for mode in summary_output_dict['modes']:
             for annotation_subject in annotation_dict[mode].values():
                 summary_output_dict['modes'][mode]['annotations'][annotation_subject] = {'count': 0}
-    
+
     # open all input files
     open_input_files:dict = {}
     for input_file in input_files:
@@ -880,7 +864,7 @@ def parse_fastq_input(
         else:
             continue
         logging.info("Opening input file: {}".format(input_file))
-        
+
     # process input files
     while True:
         # TODO: account for single-end instances
@@ -895,17 +879,16 @@ def parse_fastq_input(
         mode_count:int = 0 # isntantiate mode count tracker - used to determine if all modes checked and should write reads to fail
         ambiguous_index_encountered:bool = False # tracks if ambiguous read found due to hamming distance collision
         unspecified_annotation:bool = False # tracks if unspecified annotation encountered
-        
+
         for mode in mode_dict:
 
             mode_count += 1 # increment mode count
 
-            # TODO: make more dynamic (ie index4) - can just make this a dictionary instead of individual objects
-            # extract each index len and seq
-
+            # instantiate index seq trackers
             observed_index_seqs:list = []
             true_index_seqs:list = []
-            
+
+            # extract each index len and seq
             for designation in mode_dict[mode]:
                 if designation != 'index_file_paths': # TODO: come back and adjust where this is stored
                     if 'index' in designation:
@@ -933,28 +916,34 @@ def parse_fastq_input(
                     # increment corrected barcodes if at least one index was corrected
                     if observed_index_seqs != true_index_seqs:
                         summary_output_dict['corrected_barcodes'] += 1 # increment corrected barcodes since all the way through corrections
-                    # slice reads if necessary
-                    for designation in mode_dict[mode]:
-                        if 'read' in designation:
-                            reads[designation] = slice_read(reads[designation], mode_dict[mode][designation]['trim_len']) # trim reads if necessary
-                            reads[designation] = prepend_barcode_to_qname(reads[designation], true_index_seqs) # prepend barcode to qname of each read
-                    # write reads to passing output files
+                   # write reads to passing output files
                     if annotation_dict is not None:
                         # TODO: this should probbly be a function - will need to be more dynamic
                         read_barcode = "".join(true_index_seqs)
                         # asses if barcode specified in annotation by user
                         if read_barcode in annotation_dict[mode]:
                             annotation_subject = annotation_dict[mode][read_barcode]
-                            unspecified_annotation:bool = False # used to catch barcodes not specified in annotation                        
+                            unspecified_annotation:bool = False # used to catch barcodes not specified in annotation
                         else:
                             #logging.info("Expected barcode found from sequence but annotation not specificed.")
-                            unspecified_annotation = True # used to catch barcodes not specified in annotation 
+                            unspecified_annotation = True # used to catch barcodes not specified in annotation
                         if not unspecified_annotation:
-                            # TODO: could add more flexibility here if we want to but not sure if it's necessary
-                            if 'R1_pass' in passing_output_file_dict[mode][annotation_subject]:
-                                passing_output_file_dict[mode][annotation_subject]['R1_pass'].write("".join(reads['read1']))
-                            if 'R2_pass' in passing_output_file_dict[mode][annotation_subject]:
-                                passing_output_file_dict[mode][annotation_subject]['R2_pass'].write("".join(reads['read2']))
+                            # slice reads if necessary
+                            for designation in mode_dict[mode]:
+                                if 'read' in designation:
+                                    read_location = mode_dict[mode][designation]['location']
+                                    raw_read = reads[read_location].copy()
+                                    sliced_read = slice_read(
+                                        raw_read,
+                                        slice_start = mode_dict[mode][designation]['start_pos'],
+                                        slice_end = mode_dict[mode][designation]['end_pos']
+                                    ) # trim reads if necessary
+                                    barcoded_read = prepend_barcode_to_qname(
+                                        sliced_read,
+                                        true_index_seqs
+                                    ) # prepend barcode to qname of each read
+                                    passing_output_file_dict[mode][annotation_subject]['R{}_pass'.format(designation[-1])].write("".join(barcoded_read))
+
                             summary_output_dict['modes'][mode]['annotations'][annotation_subject]['count'] += 1 # increment annotation subject read count
                         else:
                             if 'R1_unassigned' in passing_output_file_dict[mode]['unassigned']:
@@ -962,23 +951,34 @@ def parse_fastq_input(
                             if 'R2_unassigned' in passing_output_file_dict[mode]['unassigned']:
                                 passing_output_file_dict[mode]['unassigned']['R2_unassigned'].write("".join(reads['read2']))
                     else:
-                        # TODO: could add more flexibility here if we want to but not sure if it's necessary
-                        if 'R1_pass' in passing_output_file_dict[mode]:
-                            passing_output_file_dict[mode]['R1_pass'].write("".join(reads['read1']))
-                        if 'R2_pass' in passing_output_file_dict[mode]:
-                            passing_output_file_dict[mode]['R2_pass'].write("".join(reads['read2']))
 
+                        for designation in mode_dict[mode]:
+                            if 'read' in designation:
+                                read_location = mode_dict[mode][designation]['location']
+                                raw_read = reads[read_location].copy()
+                                sliced_read = slice_read(
+                                    raw_read,
+                                    slice_start = mode_dict[mode][designation]['start_pos'],
+                                    slice_end = mode_dict[mode][designation]['end_pos']
+                                ) # trim reads if necessary
+                                barcoded_read = prepend_barcode_to_qname(
+                                    sliced_read,
+                                    true_index_seqs
+                                ) # prepend barcode to qname of each read
+                                passing_output_file_dict[mode]['R{}_pass'.format(designation[-1])].write("".join(barcoded_read))
+
+                    # TODO: don't think this conditional is needed with new structure but keeping for now
                     if not unspecified_annotation:
                         summary_output_dict['passing_reads'] += 1 # count the passed read
                         summary_output_dict['modes'][mode]['count'] += 1 # increment the mode to which read assigned
+                        break # found read
                     else:
                         summary_output_dict['unassigned_reads'] += 1 # count the unassigned read
                         summary_output_dict['modes'][mode]['unassigned'] += 1 # increment the mode to which read belongs but unassigned
-                    break # found read
+                        break # found read
 
             # if all modes checked and no pass then write to fail
             if mode_count == len(mode_dict):
-                # TODO: could add more flexibility here if we want to but not sure if it's necessary
                 if 'R1_fail' in failing_output_file_dict:
                     failing_output_file_dict['R1_fail'].write("".join(reads['read1']))
                 if 'R2_fail' in failing_output_file_dict:
@@ -988,11 +988,11 @@ def parse_fastq_input(
                 if 'I2_fail' in failing_output_file_dict:
                     failing_output_file_dict['I2_fail'].write("".join(reads['index2']))
                 summary_output_dict["failed_reads"] += 1 # count the failed read
-                
+
                 # count ambiguous barcode if hamming distance collision encountered
                 if ambiguous_index_encountered:
                     summary_output_dict["ambiguous_barcodes"] += 1
-        
+
         # update statment
         if summary_output_dict['total_reads'] % 1000000 == 0:
             logging.info("{} reads processed".format(summary_output_dict['total_reads']))
@@ -1002,10 +1002,6 @@ def parse_fastq_input(
         open_input_files[open_input_file].close()
 
     return summary_output_dict
-
-    ############# DEPRECATED BUT KEEPING TEMPORARILY #################
-    # return total_reads, passed_reads, failed_reads, corrected_barcodes, ambiguous_barcodes, unspecified_barcodes
-    ############# DEPRECATED BUT KEEPING TEMPORARILY #################
 
 
 def output_summary(
@@ -1020,7 +1016,7 @@ def output_summary(
     -----------
     summary_output_dict : dict
         Dictionary containing counts of all instances of interes (ie total reads, failed reads, ambiguous reads, etc.)
-        
+
         Components:
         -----------
         total_reads : int
@@ -1035,7 +1031,7 @@ def output_summary(
             Total barcodes thrown out due to hamming distance collision.
         unassigned_reads : int
             Total barcodes found by a mode but unassigned to an annotation.
-    
+
     output_folder : str
         Folder to output summary file to.
     experiment_name : str
@@ -1061,7 +1057,7 @@ def output_summary(
     timestr = time.strftime("%Y%m%d-%H%M%S")
     output_filename = ".".join(["summary-output", timestr, "txt"])
     output_filepath = os.path.join(os.path.abspath(output_folder), experiment_name, output_filename)
-    
+
     with open(output_filepath, 'w') as f:
         f.write("Overall processing statistics:\n")
         f.write("Total reads processed: {}\n".format(summary_output_dict["total_reads"]))
@@ -1078,7 +1074,7 @@ def output_summary(
                 for annotation_subject in summary_output_dict['modes'][mode]['annotations']:
                     f.write("\tTotal reads assigned to annotation {}: {} ({}%)\n".format(annotation_subject, summary_output_dict['modes'][mode]['annotations'][annotation_subject]['count'], round(summary_output_dict['modes'][mode]['annotations'][annotation_subject]['count'] / summary_output_dict['modes'][mode]['count'] * 100, 2)))
             f.write("Total reads assigned to mode but unassigned to annotation in mode {}: {} ({}%)\n".format(mode, summary_output_dict['modes'][mode]['unassigned'], round(summary_output_dict['modes'][mode]['unassigned'] / summary_output_dict['total_reads'] * 100, 2)))
-                
+
     return None
 
 
@@ -1099,7 +1095,7 @@ def main():
     # first check if mode file is queried
     if args.query_mode_file:
         print_available_modes(args.mode_config_file)
-    
+
     # see if mode info is requested
     if args.request_mode_info is not None:
         print_mode_details(args.mode_config_file, args.request_mode_info)
@@ -1124,7 +1120,7 @@ def main():
             annotation_files_list = annotation_files_list,
             mode_list = mode_list
         )
-    
+
     # TODO: build this out
     # delayed mode functionality
     if args.delayed_mode:
@@ -1154,7 +1150,7 @@ def main():
         output_folder = args.output_folder,
         annotation_subjects_dict = annotation_subjects_dict if args.annotation_files is not None else None
     )
-    
+
     # parse fastq input
     # total_reads, passed_reads, failed_reads, corrected_barcodes, ambiguous_barcodes, unspecified_barcodes = parse_fastq_input(
     summary_output_dict:dict = parse_fastq_input(
@@ -1173,7 +1169,6 @@ def main():
         annotation_file_used = True if args.annotation_files is not None else False
     )
 
-    print(summary_output_dict)
     # log results
     output_summary(
         summary_output_dict = summary_output_dict,
